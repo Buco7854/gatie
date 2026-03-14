@@ -1,5 +1,38 @@
 # GATIE — Avancement
 
+## Session 4 — 2026-03-14
+
+### Ce qui a été fait
+- **Frontend scaffolding** : Vite + React 19 + TypeScript
+- **Tailwind CSS v4** + **shadcn/ui** (composants Button, Input, Label, Card)
+- **next-themes** : thème dark/light/system — dark sobre gris/noir, pas de bleu
+- **TanStack Router** : routes `/setup`, `/login`, `/` (dashboard protégé)
+- **API client** (`lib/api.ts`) : setup, login, refresh, logout, health
+- **Auth store** (`lib/auth.ts`) : gestion token en mémoire, refresh automatique, `useSyncExternalStore`
+- **3 pages** :
+  - `/setup` — création du premier admin (formulaire avec validation Zod)
+  - `/login` — connexion (formulaire avec validation Zod)
+  - `/` — dashboard protégé (affiche username, rôle, bouton logout)
+- **Theme toggle** : composant pour switcher light → dark → system
+- **Vite proxy** : `/setup`, `/auth`, `/health` proxiés vers `localhost:8888`
+- Build production OK (npx vite build)
+- TypeScript check OK (npx tsc --noEmit)
+
+### Décisions techniques prises
+- Access token stocké en mémoire JS (pas localStorage) pour sécurité
+- Refresh token stocké en localStorage + envoyé dans le body (le cookie HttpOnly est un bonus côté serveur)
+- Route protégée avec `beforeLoad` qui tente un refresh si pas authentifié
+- Palette dark sobre : `#0a0a0a` background, `#141414` cards, `#262626` borders — aucun bleu
+
+### Comment tester
+1. `cd server && go run ./cmd/server` (backend sur :8888)
+2. `cd web && npm run dev` (frontend sur :5173, proxy vers :8888)
+3. Ouvrir http://localhost:5173 → redirigé vers `/login`
+4. Cliquer "Set up GATIE" → créer l'admin → redirigé vers dashboard
+5. Tester logout → login → thème toggle
+
+---
+
 ## Session 3 — 2026-03-14
 
 ### Ce qui a été fait
@@ -58,13 +91,14 @@
 - humacli pour la CLI et config par env vars
 
 ### Prochain bloc prévu
-- **CRUD membres** : endpoints pour créer, lister, consulter, modifier, supprimer des membres
+- **CRUD membres** : endpoints backend + pages frontend pour gérer les membres
 
 ### Ce qui reste à faire (grandes étapes)
 1. ~~Init projet + Docker Compose + health check~~
 2. ~~Schéma BDD + migrations (members, gates, permissions, schedules)~~
 3. ~~Auth (inscription initiale, login/JWT, refresh tokens)~~
-4. CRUD membres
+4. ~~Frontend auth (setup, login, dashboard protégé)~~
+5. CRUD membres (backend + frontend)
 5. CRUD portails + gate tokens
 6. Permissions + plannings horaires
 7. Client MQTT + modes d'auth
