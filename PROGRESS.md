@@ -1,5 +1,23 @@
 # GATIE — Avancement
 
+## Session 2 — 2026-03-14
+
+### Ce qui a été fait
+- Migration `002_create_gates.sql` : table gates (nom, token hashé, TTL statut)
+- Migration `003_create_gate_actions.sql` : actions configurables par portail (MQTT/HTTP/NONE)
+- Migration `004_create_permissions.sql` : permissions granulaires (open, close, view_status, manage) par membre/portail
+- Migration `005_create_schedules.sql` : plannings (JSONB pour expressions logiques combinables) + table de liaison member_gate_schedules
+- Queries sqlc pour toutes les nouvelles tables (CRUD + requêtes spécifiques)
+- Génération du code Go via sqlc
+
+### Décisions techniques prises
+- gate_actions.config en JSONB : flexibilité pour stocker la config MQTT ou HTTP selon le transport
+- schedules.expression en JSONB : arbre logique (AND/OR/NOT) pour combiner les règles temporelles
+- Contrainte CHECK : un planning PERSONAL doit avoir un owner_id
+- gate_token_hash : le jeton brut n'est jamais stocké (comme un mot de passe)
+
+---
+
 ## Session 1 — 2026-03-14
 
 ### Ce qui a été fait
@@ -17,11 +35,11 @@
 - humacli pour la CLI et config par env vars
 
 ### Prochain bloc prévu
-- **Initialisation du projet** : go mod init, structure de dossiers, docker-compose.yml, point d'entrée main.go avec humacli, premier endpoint health check
+- **Auth** : inscription initiale, login/JWT, refresh tokens
 
 ### Ce qui reste à faire (grandes étapes)
-1. Init projet + Docker Compose + health check
-2. Schéma BDD + migrations (members, gates, permissions, schedules)
+1. ~~Init projet + Docker Compose + health check~~
+2. ~~Schéma BDD + migrations (members, gates, permissions, schedules)~~
 3. Auth (inscription initiale, login/JWT, refresh tokens)
 4. CRUD membres
 5. CRUD portails + gate tokens
