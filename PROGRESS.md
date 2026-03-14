@@ -1,5 +1,28 @@
 # GATIE — Avancement
 
+## Session 3 — 2026-03-14
+
+### Ce qui a été fait
+- Migration `006_create_refresh_tokens.sql` : table refresh_tokens (token hashé, expiration, lien member)
+- Queries sqlc pour refresh_tokens (CRUD + suppression expirés)
+- Package `auth` : génération/validation JWT (HS256), hashing bcrypt pour mots de passe, hashing SHA-256 pour refresh tokens
+- Service `auth` : logique métier pour setup initial, login, refresh (avec rotation), logout
+- Middleware `auth` : extraction Bearer token, validation JWT, injection des claims dans le contexte
+- Handlers HTTP : `POST /setup`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`
+- Wiring complet dans main.go avec option `JWTSecret` (auto-généré si absent)
+- 17 tests unitaires (JWT, bcrypt, middleware, handlers) — tous passent
+- Downgrade des dépendances Go pour compatibilité avec Go 1.24.7
+
+### Décisions techniques prises
+- Access token JWT (15min) en mémoire côté client, refresh token (7j) en cookie HttpOnly/Secure/SameSite=Strict
+- Refresh token rotation : à chaque refresh, l'ancien token est supprimé et un nouveau est créé
+- Refresh token hashé en SHA-256 en BDD (pas bcrypt car on n'a pas besoin de résistance au brute-force, le token est aléatoire 256 bits)
+- JWT secret auto-généré au démarrage si non configuré (avec warning log)
+- Setup initial vérifie `COUNT(members) = 0` avant de créer le premier admin
+- Login retourne un message d'erreur générique "invalid credentials" (pas de fuite d'info username/password)
+
+---
+
 ## Session 2 — 2026-03-14
 
 ### Ce qui a été fait
@@ -35,12 +58,12 @@
 - humacli pour la CLI et config par env vars
 
 ### Prochain bloc prévu
-- **Auth** : inscription initiale, login/JWT, refresh tokens
+- **CRUD membres** : endpoints pour créer, lister, consulter, modifier, supprimer des membres
 
 ### Ce qui reste à faire (grandes étapes)
 1. ~~Init projet + Docker Compose + health check~~
 2. ~~Schéma BDD + migrations (members, gates, permissions, schedules)~~
-3. Auth (inscription initiale, login/JWT, refresh tokens)
+3. ~~Auth (inscription initiale, login/JWT, refresh tokens)~~
 4. CRUD membres
 5. CRUD portails + gate tokens
 6. Permissions + plannings horaires

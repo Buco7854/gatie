@@ -41,6 +41,14 @@ type MemberGateSchedule struct {
 	ScheduleID pgtype.UUID `json:"schedule_id"`
 }
 
+type RefreshToken struct {
+	ID        pgtype.UUID        `json:"id"`
+	MemberID  pgtype.UUID        `json:"member_id"`
+	TokenHash string             `json:"token_hash"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type Permission struct {
 	ID            pgtype.UUID `json:"id"`
 	MemberID      pgtype.UUID `json:"member_id"`
