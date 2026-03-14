@@ -40,11 +40,28 @@ type AuthTokenOutput struct {
 	Body      AuthTokenBody
 }
 
+type SetupStatusBody struct {
+	NeedsSetup bool `json:"needs_setup" doc:"Whether initial setup is required"`
+}
+
+type SetupStatusOutput struct {
+	Body SetupStatusBody
+}
+
 func (h *AuthHandler) Register(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "setup-status",
+		Method:      http.MethodGet,
+		Path:        "/api/setup/status",
+		Summary:     "Setup status",
+		Description: "Check whether initial setup is needed.",
+		Tags:        []string{"Auth"},
+	}, h.setupStatus)
+
 	huma.Register(api, huma.Operation{
 		OperationID:   "setup",
 		Method:        http.MethodPost,
-		Path:          "/setup",
+		Path:          "/api/setup",
 		Summary:       "Initial setup",
 		Description:   "Create the first admin account. Only available when no members exist.",
 		Tags:          []string{"Auth"},
@@ -54,7 +71,7 @@ func (h *AuthHandler) Register(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "login",
 		Method:      http.MethodPost,
-		Path:        "/auth/login",
+		Path:        "/api/auth/login",
 		Summary:     "Login",
 		Description: "Authenticate with username and password.",
 		Tags:        []string{"Auth"},
@@ -63,7 +80,7 @@ func (h *AuthHandler) Register(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "refresh",
 		Method:      http.MethodPost,
-		Path:        "/auth/refresh",
+		Path:        "/api/auth/refresh",
 		Summary:     "Refresh tokens",
 		Description: "Get a new access token using a refresh token.",
 		Tags:        []string{"Auth"},
@@ -72,12 +89,20 @@ func (h *AuthHandler) Register(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "logout",
 		Method:        http.MethodPost,
-		Path:          "/auth/logout",
+		Path:          "/api/auth/logout",
 		Summary:       "Logout",
 		Description:   "Revoke the refresh token.",
 		Tags:          []string{"Auth"},
 		DefaultStatus: http.StatusNoContent,
 	}, h.logout)
+}
+
+func (h *AuthHandler) setupStatus(ctx context.Context, input *struct{}) (*SetupStatusOutput, error) {
+	needed, err := h.authService.NeedsSetup(ctx)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to check setup status")
+	}
+	return &SetupStatusOutput{Body: SetupStatusBody{NeedsSetup: needed}}, nil
 }
 
 func (h *AuthHandler) setup(ctx context.Context, input *SetupInput) (*AuthTokenOutput, error) {

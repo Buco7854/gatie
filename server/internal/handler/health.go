@@ -22,7 +22,7 @@ func RegisterHealth(api huma.API, db *pgxpool.Pool, vk valkey.Client) {
 	huma.Register(api, huma.Operation{
 		OperationID: "health-check",
 		Method:      http.MethodGet,
-		Path:        "/health",
+		Path:        "/api/health",
 		Summary:     "Health check",
 		Tags:        []string{"System"},
 	}, func(ctx context.Context, input *struct{}) (*HealthOutput, error) {

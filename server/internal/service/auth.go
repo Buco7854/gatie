@@ -31,6 +31,14 @@ type AuthResult struct {
 	Member       repository.Member
 }
 
+func (s *AuthService) NeedsSetup(ctx context.Context) (bool, error) {
+	count, err := s.queries.CountMembers(ctx)
+	if err != nil {
+		return false, fmt.Errorf("counting members: %w", err)
+	}
+	return count == 0, nil
+}
+
 func (s *AuthService) Setup(ctx context.Context, input SetupInput) (*AuthResult, error) {
 	count, err := s.queries.CountMembers(ctx)
 	if err != nil {
