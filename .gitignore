@@ -1,0 +1,34 @@
+# Go
+server/server
+server/server.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Dependencies
+vendor/
+
+# Claude Code
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Node (frontend)
+web/node_modules/
+web/dist/
+
+# Generated (sqlc) - tracked intentionally
+# server/internal/repository/
