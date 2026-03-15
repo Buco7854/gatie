@@ -27,3 +27,6 @@ RETURNING *;
 
 -- name: DeleteMember :exec
 DELETE FROM members WHERE id = $1;
+
+-- name: CountMembersByRole :one
+SELECT count(*) FROM members WHERE role = $1;

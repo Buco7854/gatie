@@ -1,5 +1,54 @@
 # GATIE — Avancement
 
+## Session 5 — 2026-03-14
+
+### Ce qui a été fait
+- **Frontend refactorisé** : HeadlessUI v2 + Tailwind CSS v4 (CSS-first), Vite 7, sans shadcn/ui
+- **Theme toggle** : Listbox HeadlessUI v2 (Light/Dark/Système) avec icônes Heroicons
+- **AppHeader** : composant partagé avec nav dynamique (liens admin only), logout, theme toggle
+- **CRUD membres — backend** :
+  - `middleware/admin.go` : `RequireAdmin` middleware
+  - `middleware/auth.go` : ajout `GetClaimsFromContext(context.Context)` pour les handlers
+  - `repository/members_role.sql.go` : `CountMembersByRole` (équivalent sqlc)
+  - `service/member.go` : `MemberService` (List, Get, Create, Update, Delete) avec gardes métier
+  - `handler/member.go` : 5 routes Huma (`GET/POST /members`, `GET/PATCH/DELETE /members/{id}`)
+  - `main.go` : wiring `MemberService` + `MemberHandler` + `authMW`
+- **CRUD membres — frontend** :
+  - `lib/types.ts` : types partagés `Member`, `MembersPage`
+  - `components/ui/select.tsx` : composant Select stylé
+  - `pages/members.tsx` : liste paginée + modale create/edit + suppression inline avec confirmation
+  - `router.tsx` : route `/members`
+  - i18n FR + EN mis à jour (nav, rôles, membres, actions, pagination)
+
+### Décisions techniques prises
+- Guard "dernier admin" : `CountMembersByRole` pour compter les admins avant suppression
+- Guard "auto-suppression" : le caller ne peut pas supprimer son propre compte
+- Unicité username : détection erreur pgconn code 23505 → `ErrUsernameExists`
+- Icônes d'action (edit/delete) visibles au survol uniquement (`group-hover:opacity-100`)
+- Suppression : confirmation inline dans la ligne (pas de modal) — UX propre
+
+### Prochain bloc prévu
+- **CRUD portails** : backend (gates + gate_actions) + frontend (page portails)
+
+### Ce qui reste à faire (grandes étapes)
+1. ~~Init projet + Docker Compose + health check~~
+2. ~~Schéma BDD + migrations (members, gates, permissions, schedules)~~
+3. ~~Auth (inscription initiale, login/JWT, refresh tokens)~~
+4. ~~Frontend auth (setup, login, dashboard protégé)~~
+5. ~~CRUD membres (backend + frontend)~~
+6. CRUD portails + gate tokens
+7. Permissions + plannings horaires
+8. Client MQTT + modes d'auth
+9. Actions sur portails (open/close) via MQTT/HTTP
+10. Statut temps réel (SSE)
+11. Codes PIN / mots de passe d'accès
+12. Domaines personnalisés
+13. API tokens
+14. SSO (OIDC)
+15. Audit log
+
+---
+
 ## Session 4 — 2026-03-14
 
 ### Ce qui a été fait

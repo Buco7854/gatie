@@ -28,14 +28,21 @@ L'expression de besoin complète est dans `EXPRESSION_OF_NEED.md`.
 ### Frontend — React + TypeScript
 | Composant | Choix |
 |-----------|-------|
-| Build | Vite |
+| Build | Vite 7 |
 | Framework | React 19 |
 | Routing | TanStack Router |
 | Data fetching | TanStack Query |
-| UI | Tailwind CSS + shadcn/ui |
+| UI | Tailwind CSS v4 + HeadlessUI v2 |
 | i18n | i18next |
 | Thème | next-themes |
 | Formulaires | React Hook Form + Zod |
+
+### Frontend — Règles de design
+- **Mobile-first** : tout composant est conçu pour mobile en priorité, adapté au desktop via breakpoints Tailwind (`sm:`, `md:`, `lg:`).
+- **Pas de `<select>` natif** : utiliser `ListboxSelect` (`@/components/ui/listbox-select`) pour tout champ de sélection dans les formulaires — cohérence visuelle avec le reste de l'UI HeadlessUI.
+- **Tableaux** : sur mobile (`< sm`), les tableaux sont remplacés par une vue en cartes/liste. Sur desktop, tableau classique.
+- **Boutons d'action** (édition/suppression dans une liste) : toujours visibles sur mobile (touch ≠ hover), visibles au survol uniquement sur desktop.
+- **Breakpoints standards** : `sm = 640px`, `md = 768px`, `lg = 1024px`.
 
 ### Infrastructure (Docker Compose)
 | Service | Image |

@@ -144,13 +144,11 @@ func (h *AuthHandler) login(ctx context.Context, input *LoginInput) (*AuthTokenO
 // --- Refresh ---
 
 type RefreshInput struct {
-	Body struct {
-		RefreshToken string `json:"refresh_token" minLength:"1" doc:"Refresh token"`
-	}
+	RefreshToken string `cookie:"refresh_token" required:"true"`
 }
 
 func (h *AuthHandler) refresh(ctx context.Context, input *RefreshInput) (*AuthTokenOutput, error) {
-	result, err := h.authService.Refresh(ctx, input.Body.RefreshToken)
+	result, err := h.authService.Refresh(ctx, input.RefreshToken)
 	if err != nil {
 		return nil, huma.Error401Unauthorized("invalid or expired refresh token")
 	}
@@ -161,13 +159,13 @@ func (h *AuthHandler) refresh(ctx context.Context, input *RefreshInput) (*AuthTo
 // --- Logout ---
 
 type LogoutInput struct {
-	Body struct {
-		RefreshToken string `json:"refresh_token" minLength:"1" doc:"Refresh token to revoke"`
-	}
+	RefreshToken string `cookie:"refresh_token"`
 }
 
 func (h *AuthHandler) logout(ctx context.Context, input *LogoutInput) (*struct{}, error) {
-	h.authService.Logout(ctx, input.Body.RefreshToken)
+	if input.RefreshToken != "" {
+		h.authService.Logout(ctx, input.RefreshToken)
+	}
 	return nil, nil
 }
 
@@ -192,7 +190,7 @@ func buildAuthOutput(result *service.AuthResult) *AuthTokenOutput {
 
 func buildRefreshCookie(token string, maxAge time.Duration) string {
 	return "refresh_token=" + token +
-		"; HttpOnly; Secure; SameSite=Strict; Path=/auth" +
+		"; HttpOnly; SameSite=Strict; Path=/api/auth" +
 		"; Max-Age=" + formatSeconds(maxAge)
 }
 

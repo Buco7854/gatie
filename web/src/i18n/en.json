@@ -1,0 +1,75 @@
+{
+  "theme": {
+    "toggle": "Toggle theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "nav": {
+    "members": "Members",
+    "logout": "Sign out"
+  },
+  "role": {
+    "admin": "Admin",
+    "member": "Member"
+  },
+  "field": {
+    "username": "Username",
+    "usernamePlaceholder": "alice",
+    "displayName": "Display name",
+    "displayNamePlaceholder": "Alice Martin",
+    "password": "Password",
+    "confirmPassword": "Confirm password",
+    "role": "Role"
+  },
+  "validation": {
+    "required": "This field is required",
+    "minLength": "Minimum {{min}} characters",
+    "usernameTaken": "This username is already taken"
+  },
+  "error": {
+    "generic": "Something went wrong, please try again."
+  },
+  "action": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "edit": "Edit",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "setup": {
+    "title": "Create administrator account",
+    "subtitle": "Initial setup — one time only",
+    "submit": "Create account",
+    "passwordMismatch": "Passwords do not match"
+  },
+  "login": {
+    "title": "Sign in",
+    "subtitle": "Access your GATIE workspace",
+    "submit": "Sign in",
+    "invalidCredentials": "Invalid username or password.",
+    "setupLink": "First time?",
+    "setupLinkAnchor": "Set up the application"
+  },
+  "dashboard": {
+    "noGates": "No gates configured",
+    "noGatesHint": "Gates will appear here once added."
+  },
+  "members": {
+    "title": "Members",
+    "count": "{{count}} member(s)",
+    "add": "Add",
+    "create": "Create member",
+    "empty": "No members",
+    "modalTitleCreate": "New member",
+    "modalTitleEdit": "Edit member",
+    "deleteTitle": "Delete member",
+    "deleteConfirm": "Are you sure you want to delete {{username}}? This action cannot be undone.",
+    "cannotEditOwnRole": "You cannot change your own role."
+  },
+  "pagination": {
+    "page": "Page {{page}} of {{total}}"
+  }
+}

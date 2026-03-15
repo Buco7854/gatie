@@ -1,87 +1,6 @@
-const BASE_URL = ""
+import { getAccessToken, setAuth, clearAuth } from '@/lib/auth'
 
-type ApiError = {
-  status: number
-  title: string
-  detail: string
-}
-
-class ApiClient {
-  private accessToken: string | null = null
-
-  setAccessToken(token: string | null) {
-    this.accessToken = token
-  }
-
-  getAccessToken() {
-    return this.accessToken
-  }
-
-  async request<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(options.headers as Record<string, string>),
-    }
-
-    if (this.accessToken) {
-      headers["Authorization"] = `Bearer ${this.accessToken}`
-    }
-
-    const response = await fetch(`${BASE_URL}${path}`, {
-      ...options,
-      headers,
-    })
-
-    if (!response.ok) {
-      const error: ApiError = await response.json().catch(() => ({
-        status: response.status,
-        title: response.statusText,
-        detail: "An error occurred",
-      }))
-      throw error
-    }
-
-    if (response.status === 204) {
-      return undefined as T
-    }
-
-    return response.json()
-  }
-
-  setup(username: string, password: string) {
-    return this.request<AuthResponse>("/setup", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    })
-  }
-
-  login(username: string, password: string) {
-    return this.request<AuthResponse>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    })
-  }
-
-  refresh(refreshToken: string) {
-    return this.request<AuthResponse>("/auth/refresh", {
-      method: "POST",
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    })
-  }
-
-  logout(refreshToken: string) {
-    return this.request<void>("/auth/logout", {
-      method: "POST",
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    })
-  }
-
-  healthCheck() {
-    return this.request<HealthResponse>("/health")
-  }
-}
-
-export interface AuthResponse {
+export interface AuthTokens {
   access_token: string
   refresh_token: string
   member_id: string
@@ -89,9 +8,66 @@ export interface AuthResponse {
   username: string
 }
 
-export interface HealthResponse {
-  status: string
-  services: Record<string, string>
+let refreshPromise: Promise<boolean> | null = null
+
+async function refreshTokens(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) return false
+      const data = (await res.json()) as AuthTokens
+      setAuth(data)
+      return true
+    } catch {
+      return false
+    } finally {
+      refreshPromise = null
+    }
+  })()
+
+  return refreshPromise
 }
 
-export const api = new ApiClient()
+export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getAccessToken()
+  const headers = new Headers(options.headers as HeadersInit | undefined)
+  headers.set('Content-Type', 'application/json')
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  const res = await fetch(`/api${path}`, { ...options, credentials: 'include', headers })
+
+  if (res.status === 401) {
+    const refreshed = await refreshTokens()
+    if (refreshed) {
+      const newToken = getAccessToken()
+      if (newToken) headers.set('Authorization', `Bearer ${newToken}`)
+      const retry = await fetch(`/api${path}`, { ...options, credentials: 'include', headers })
+      if (!retry.ok) {
+        const body = await retry.json().catch(() => null) as { detail?: string } | null
+        throw new Error(body?.detail ?? retry.statusText)
+      }
+      if (retry.status === 204) return undefined as T
+      return retry.json() as Promise<T>
+    }
+    clearAuth()
+    window.location.href = '/login'
+    throw new Error('Unauthorized')
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { detail?: string } | null
+    throw new Error(body?.detail ?? res.statusText)
+  }
+
+  if (res.status === 204) return undefined as T
+  return res.json() as Promise<T>
+}
+
+export async function silentRefresh(): Promise<boolean> {
+  return refreshTokens()
+}

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -52,5 +53,12 @@ func writeError(ctx huma.Context, status int, message string) {
 
 func GetClaims(ctx huma.Context) *auth.Claims {
 	claims, _ := ctx.Context().Value(ClaimsKey).(*auth.Claims)
+	return claims
+}
+
+// GetClaimsFromContext retrieves claims from a standard context.Context.
+// Used in handler functions which receive context.Context, not huma.Context.
+func GetClaimsFromContext(ctx context.Context) *auth.Claims {
+	claims, _ := ctx.Value(ClaimsKey).(*auth.Claims)
 	return claims
 }

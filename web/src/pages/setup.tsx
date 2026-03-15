@@ -1,107 +1,136 @@
-import { useState } from "react"
-import { useNavigate } from "@tanstack/react-router"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { api } from "@/lib/api"
-import { auth } from "@/lib/auth"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useEffect } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import { apiFetch, type AuthTokens } from '@/lib/api'
+import { setAuth } from '@/lib/auth'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Field } from '@/components/ui/field'
+import { ThemeToggle } from '@/components/theme-toggle'
 
-const setupSchema = z.object({
-  username: z.string().min(3, "3 characters minimum").max(100),
-  password: z.string().min(8, "8 characters minimum").max(128),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-})
+const schema = z
+  .object({
+    username: z.string().min(3),
+    password: z.string().min(8),
+    confirmPassword: z.string(),
+  })
+  .refine((d) => d.password === d.confirmPassword, {
+    path: ['confirmPassword'],
+    message: 'mismatch',
+  })
 
-type SetupForm = z.infer<typeof setupSchema>
+type FormData = z.infer<typeof schema>
 
 export function SetupPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
-  const [error, setError] = useState<string | null>(null)
+
+  const { data: setupStatus } = useQuery({
+    queryKey: ['setup-status'],
+    queryFn: () => apiFetch<{ needs_setup: boolean }>('/setup/status'),
+  })
+
+  useEffect(() => {
+    if (setupStatus && !setupStatus.needs_setup) {
+      navigate({ to: '/login' })
+    }
+  }, [setupStatus, navigate])
 
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<SetupForm>({
-    resolver: zodResolver(setupSchema),
+    formState: { errors },
+  } = useForm<FormData>({ resolver: zodResolver(schema) })
+
+  const mutation = useMutation({
+    mutationFn: (data: Omit<FormData, 'confirmPassword'>) =>
+      apiFetch<AuthTokens>('/setup', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (data) => {
+      setAuth(data)
+      navigate({ to: '/' })
+    },
   })
 
-  const onSubmit = async (data: SetupForm) => {
-    setError(null)
-    try {
-      const res = await api.setup(data.username, data.password)
-      auth.handleAuthResponse(res)
-      navigate({ to: "/" })
-    } catch (err: unknown) {
-      const apiErr = err as { detail?: string }
-      setError(apiErr.detail || "Setup failed")
-    }
-  }
+  const onSubmit = handleSubmit(({ username, password }) => {
+    mutation.mutate({ username, password })
+  })
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">GATIE</CardTitle>
-          <CardDescription>Create the first administrator account to get started.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                autoComplete="username"
-                {...register("username")}
-              />
-              {errors.username && (
-                <p className="text-sm text-destructive">{errors.username.message}</p>
+    <div className="flex min-h-screen flex-col bg-zinc-100 dark:bg-zinc-900">
+      <div className="flex justify-end p-4">
+        <ThemeToggle />
+      </div>
+
+      <div className="flex flex-1 items-center justify-center px-4 pb-16">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 text-center">
+            <span className="text-xs font-semibold tracking-[0.25em] text-zinc-400 uppercase dark:text-zinc-500">
+              GATIE
+            </span>
+            <h1 className="mt-2 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+              {t('setup.title')}
+            </h1>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              {t('setup.subtitle')}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700/60 dark:bg-zinc-800">
+            <form onSubmit={onSubmit} className="space-y-4">
+              <Field
+                label={t('field.username')}
+                error={errors.username ? t('validation.minLength', { min: 3 }) : undefined}
+              >
+                <Input
+                  {...register('username')}
+                  placeholder={t('field.usernamePlaceholder')}
+                  autoComplete="username"
+                  autoFocus
+                />
+              </Field>
+
+              <Field
+                label={t('field.password')}
+                error={errors.password ? t('validation.minLength', { min: 8 }) : undefined}
+              >
+                <Input
+                  {...register('password')}
+                  type="password"
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                />
+              </Field>
+
+              <Field
+                label={t('field.confirmPassword')}
+                error={errors.confirmPassword ? t('setup.passwordMismatch') : undefined}
+              >
+                <Input
+                  {...register('confirmPassword')}
+                  type="password"
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                />
+              </Field>
+
+              {mutation.isError && (
+                <p className="text-xs text-red-600 dark:text-red-400">{t('error.generic')}</p>
               )}
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="new-password"
-                {...register("password")}
-              />
-              {errors.password && (
-                <p className="text-sm text-destructive">{errors.password.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm password</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                autoComplete="new-password"
-                {...register("confirmPassword")}
-              />
-              {errors.confirmPassword && (
-                <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
-              )}
-            </div>
-
-            {error && (
-              <p className="text-sm text-destructive text-center">{error}</p>
-            )}
-
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Creating..." : "Create admin account"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+              <Button type="submit" loading={mutation.isPending} className="w-full mt-2">
+                {t('setup.submit')}
+              </Button>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

@@ -1,56 +1,42 @@
-import {
-  createRouter,
-  createRootRoute,
-  createRoute,
-  redirect,
-  Outlet,
-} from "@tanstack/react-router"
-import { ThemeProvider } from "next-themes"
-import { auth } from "@/lib/auth"
-import { SetupPage } from "@/pages/setup"
-import { LoginPage } from "@/pages/login"
-import { DashboardPage } from "@/pages/dashboard"
+import { createRouter, createRoute, createRootRoute, Outlet } from '@tanstack/react-router'
+import { SetupPage } from '@/pages/setup'
+import { LoginPage } from '@/pages/login'
+import { DashboardPage } from '@/pages/dashboard'
+import { MembersPage } from '@/pages/members'
 
 const rootRoute = createRootRoute({
-  component: () => (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-      <Outlet />
-    </ThemeProvider>
-  ),
+  component: () => <Outlet />,
 })
 
 const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/setup",
+  path: '/setup',
   component: SetupPage,
 })
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/login",
+  path: '/login',
   component: LoginPage,
 })
 
 const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/",
-  beforeLoad: async () => {
-    const state = auth.getState()
-    if (!state.isAuthenticated) {
-      const refreshed = await auth.tryRefresh()
-      if (!refreshed) {
-        throw redirect({ to: "/login" })
-      }
-    }
-  },
+  path: '/',
   component: DashboardPage,
 })
 
-const routeTree = rootRoute.addChildren([setupRoute, loginRoute, dashboardRoute])
+const membersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/members',
+  component: MembersPage,
+})
+
+const routeTree = rootRoute.addChildren([setupRoute, loginRoute, dashboardRoute, membersRoute])
 
 export const router = createRouter({ routeTree })
 
-declare module "@tanstack/react-router" {
+declare module '@tanstack/react-router' {
   interface Register {
     router: typeof router
   }

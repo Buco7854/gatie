@@ -19,6 +19,7 @@ import (
 	"github.com/gatie-io/gatie-server/internal/auth"
 	"github.com/gatie-io/gatie-server/internal/database"
 	"github.com/gatie-io/gatie-server/internal/handler"
+	"github.com/gatie-io/gatie-server/internal/middleware"
 	"github.com/gatie-io/gatie-server/internal/repository"
 	"github.com/gatie-io/gatie-server/internal/service"
 )
@@ -56,14 +57,20 @@ func main() {
 		}
 
 		jwtManager := auth.NewJWTManager(jwtSecret, 15*time.Minute, 7*24*time.Hour)
+		authMW := middleware.NewAuthMiddleware(jwtManager)
+
 		authService := service.NewAuthService(queries, jwtManager)
 		authHandler := handler.NewAuthHandler(authService)
+
+		memberService := service.NewMemberService(queries)
+		memberHandler := handler.NewMemberHandler(memberService, authMW, middleware.RequireAdmin)
 
 		router := chi.NewMux()
 		api := humachi.New(router, huma.DefaultConfig("GATIE", "1.0.0"))
 
 		handler.RegisterHealth(api, dbpool, vkClient)
 		authHandler.Register(api)
+		memberHandler.Register(api)
 
 		server := &http.Server{
 			Addr:    fmt.Sprintf("%s:%d", opts.Host, opts.Port),

@@ -1,97 +1,116 @@
-import { useState } from "react"
-import { useNavigate, Link } from "@tanstack/react-router"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { api } from "@/lib/api"
-import { auth } from "@/lib/auth"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useNavigate, Link } from '@tanstack/react-router'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { useMutation } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
+import { apiFetch, type AuthTokens } from '@/lib/api'
+import { setAuth } from '@/lib/auth'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Field } from '@/components/ui/field'
+import { ThemeToggle } from '@/components/theme-toggle'
 
-const loginSchema = z.object({
-  username: z.string().min(1, "Required"),
-  password: z.string().min(1, "Required"),
+const schema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
 })
 
-type LoginForm = z.infer<typeof loginSchema>
+type FormData = z.infer<typeof schema>
 
 export function LoginPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
-  const [error, setError] = useState<string | null>(null)
 
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<LoginForm>({
-    resolver: zodResolver(loginSchema),
+    formState: { errors },
+  } = useForm<FormData>({ resolver: zodResolver(schema) })
+
+  const mutation = useMutation({
+    mutationFn: (data: FormData) =>
+      apiFetch<AuthTokens>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (data) => {
+      setAuth(data)
+      navigate({ to: '/' })
+    },
   })
 
-  const onSubmit = async (data: LoginForm) => {
-    setError(null)
-    try {
-      const res = await api.login(data.username, data.password)
-      auth.handleAuthResponse(res)
-      navigate({ to: "/" })
-    } catch (err: unknown) {
-      const apiErr = err as { detail?: string }
-      setError(apiErr.detail || "Invalid credentials")
-    }
-  }
+  const onSubmit = handleSubmit((data) => mutation.mutate(data))
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">GATIE</CardTitle>
-          <CardDescription>Sign in to your account.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                autoComplete="username"
-                {...register("username")}
-              />
-              {errors.username && (
-                <p className="text-sm text-destructive">{errors.username.message}</p>
+    <div className="flex min-h-screen flex-col bg-zinc-100 dark:bg-zinc-900">
+      <div className="flex justify-end p-4">
+        <ThemeToggle />
+      </div>
+
+      <div className="flex flex-1 items-center justify-center px-4 pb-16">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 text-center">
+            <span className="text-xs font-semibold tracking-[0.25em] text-zinc-400 uppercase dark:text-zinc-500">
+              GATIE
+            </span>
+            <h1 className="mt-2 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+              {t('login.title')}
+            </h1>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              {t('login.subtitle')}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700/60 dark:bg-zinc-800">
+            <form onSubmit={onSubmit} className="space-y-4">
+              <Field
+                label={t('field.username')}
+                error={errors.username ? t('validation.required') : undefined}
+              >
+                <Input
+                  {...register('username')}
+                  placeholder={t('field.usernamePlaceholder')}
+                  autoComplete="username"
+                  autoFocus
+                />
+              </Field>
+
+              <Field
+                label={t('field.password')}
+                error={errors.password ? t('validation.required') : undefined}
+              >
+                <Input
+                  {...register('password')}
+                  type="password"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
+              </Field>
+
+              {mutation.isError && (
+                <p className="text-xs text-red-600 dark:text-red-400">
+                  {t('login.invalidCredentials')}
+                </p>
               )}
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                {...register("password")}
-              />
-              {errors.password && (
-                <p className="text-sm text-destructive">{errors.password.message}</p>
-              )}
-            </div>
+              <Button type="submit" loading={mutation.isPending} className="w-full mt-2">
+                {t('login.submit')}
+              </Button>
+            </form>
+          </div>
 
-            {error && (
-              <p className="text-sm text-destructive text-center">{error}</p>
-            )}
-
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Signing in..." : "Sign in"}
-            </Button>
-          </form>
-
-          <p className="text-sm text-muted-foreground text-center mt-4">
-            First time?{" "}
-            <Link to="/setup" className="underline text-foreground">
-              Set up GATIE
+          <p className="mt-5 text-center text-sm text-zinc-500 dark:text-zinc-400">
+            {t('login.setupLink')}{' '}
+            <Link
+              to="/setup"
+              className="text-indigo-600 hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300"
+            >
+              {t('login.setupLinkAnchor')}
             </Link>
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

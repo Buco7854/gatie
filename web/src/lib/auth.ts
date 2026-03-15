@@ -1,90 +1,44 @@
-import { api, type AuthResponse } from "./api"
-
-type AuthState = {
-  isAuthenticated: boolean
+interface AuthState {
+  accessToken: string | null
   memberId: string | null
   username: string | null
   role: string | null
-  refreshToken: string | null
 }
 
-const REFRESH_TOKEN_KEY = "gatie_refresh_token"
-
-let state: AuthState = {
-  isAuthenticated: false,
+const state: AuthState = {
+  accessToken: null,
   memberId: null,
   username: null,
   role: null,
-  refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY),
 }
 
-let listeners: Array<() => void> = []
-
-function notify() {
-  listeners.forEach((fn) => fn())
+export function setAuth(data: {
+  access_token: string
+  member_id: string
+  username: string
+  role: string
+}) {
+  state.accessToken = data.access_token
+  state.memberId = data.member_id
+  state.username = data.username
+  state.role = data.role
 }
 
-export const auth = {
-  getState(): AuthState {
-    return state
-  },
+export function clearAuth() {
+  state.accessToken = null
+  state.memberId = null
+  state.username = null
+  state.role = null
+}
 
-  subscribe(fn: () => void) {
-    listeners.push(fn)
-    return () => {
-      listeners = listeners.filter((l) => l !== fn)
-    }
-  },
+export function getAccessToken(): string | null {
+  return state.accessToken
+}
 
-  handleAuthResponse(res: AuthResponse) {
-    api.setAccessToken(res.access_token)
-    localStorage.setItem(REFRESH_TOKEN_KEY, res.refresh_token)
-    state = {
-      isAuthenticated: true,
-      memberId: res.member_id,
-      username: res.username,
-      role: res.role,
-      refreshToken: res.refresh_token,
-    }
-    notify()
-  },
+export function getAuthState(): Readonly<AuthState> {
+  return state
+}
 
-  async tryRefresh(): Promise<boolean> {
-    const refreshToken = state.refreshToken || localStorage.getItem(REFRESH_TOKEN_KEY)
-    if (!refreshToken) return false
-
-    try {
-      const res = await api.refresh(refreshToken)
-      this.handleAuthResponse(res)
-      return true
-    } catch {
-      this.clear()
-      return false
-    }
-  },
-
-  clear() {
-    api.setAccessToken(null)
-    localStorage.removeItem(REFRESH_TOKEN_KEY)
-    state = {
-      isAuthenticated: false,
-      memberId: null,
-      username: null,
-      role: null,
-      refreshToken: null,
-    }
-    notify()
-  },
-
-  async logout() {
-    const refreshToken = state.refreshToken
-    if (refreshToken) {
-      try {
-        await api.logout(refreshToken)
-      } catch {
-        // best effort
-      }
-    }
-    this.clear()
-  },
+export function isAuthenticated(): boolean {
+  return state.accessToken !== null
 }

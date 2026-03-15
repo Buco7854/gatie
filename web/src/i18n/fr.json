@@ -1,0 +1,75 @@
+{
+  "theme": {
+    "toggle": "Changer le thème",
+    "light": "Clair",
+    "dark": "Sombre",
+    "system": "Système"
+  },
+  "nav": {
+    "members": "Membres",
+    "logout": "Déconnexion"
+  },
+  "role": {
+    "admin": "Admin",
+    "member": "Membre"
+  },
+  "field": {
+    "username": "Nom d'utilisateur",
+    "usernamePlaceholder": "alice",
+    "displayName": "Nom affiché",
+    "displayNamePlaceholder": "Alice Martin",
+    "password": "Mot de passe",
+    "confirmPassword": "Confirmer le mot de passe",
+    "role": "Rôle"
+  },
+  "validation": {
+    "required": "Ce champ est requis",
+    "minLength": "Minimum {{min}} caractères",
+    "usernameTaken": "Ce nom d'utilisateur est déjà pris"
+  },
+  "error": {
+    "generic": "Une erreur est survenue, veuillez réessayer."
+  },
+  "action": {
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "confirm": "Confirmer",
+    "yes": "Oui",
+    "no": "Non"
+  },
+  "setup": {
+    "title": "Créer le compte administrateur",
+    "subtitle": "Configuration initiale — une seule fois",
+    "submit": "Créer le compte",
+    "passwordMismatch": "Les mots de passe ne correspondent pas"
+  },
+  "login": {
+    "title": "Connexion",
+    "subtitle": "Accédez à votre espace GATIE",
+    "submit": "Se connecter",
+    "invalidCredentials": "Nom d'utilisateur ou mot de passe incorrect.",
+    "setupLink": "Première utilisation ?",
+    "setupLinkAnchor": "Configurer l'application"
+  },
+  "dashboard": {
+    "noGates": "Aucun portail configuré",
+    "noGatesHint": "Les portails apparaîtront ici une fois ajoutés."
+  },
+  "members": {
+    "title": "Membres",
+    "count": "{{count}} membre(s)",
+    "add": "Ajouter",
+    "create": "Créer le membre",
+    "empty": "Aucun membre",
+    "modalTitleCreate": "Nouveau membre",
+    "modalTitleEdit": "Modifier le membre",
+    "deleteTitle": "Supprimer le membre",
+    "deleteConfirm": "Êtes-vous sûr de vouloir supprimer {{username}} ? Cette action est irréversible.",
+    "cannotEditOwnRole": "Vous ne pouvez pas modifier votre propre rôle."
+  },
+  "pagination": {
+    "page": "Page {{page}} / {{total}}"
+  }
+}
