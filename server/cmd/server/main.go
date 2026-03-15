@@ -65,12 +65,16 @@ func main() {
 		memberService := service.NewMemberService(queries)
 		memberHandler := handler.NewMemberHandler(memberService, authMW, middleware.RequireAdmin)
 
+		gateService := service.NewGateService(queries)
+		gateHandler := handler.NewGateHandler(gateService, authMW, middleware.RequireAdmin)
+
 		router := chi.NewMux()
 		api := humachi.New(router, huma.DefaultConfig("GATIE", "1.0.0"))
 
 		handler.RegisterHealth(api, dbpool, vkClient)
 		authHandler.Register(api)
 		memberHandler.Register(api)
+		gateHandler.Register(api)
 
 		server := &http.Server{
 			Addr:    fmt.Sprintf("%s:%d", opts.Host, opts.Port),

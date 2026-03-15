@@ -1,0 +1,494 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react'
+import {
+  PlusIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  XMarkIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ArrowPathIcon,
+  ClipboardDocumentIcon,
+  CheckIcon,
+} from '@heroicons/react/24/outline'
+import { useTranslation } from 'react-i18next'
+import { useAuth } from '@/hooks/use-auth'
+import { apiFetch } from '@/lib/api'
+import type { Gate, GateWithToken, GatesPage } from '@/lib/types'
+import { AppHeader } from '@/components/app-header'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Field } from '@/components/ui/field'
+
+// --- Schemas ---
+
+const gateSchema = z.object({
+  name: z.string().min(1).max(100),
+  status_ttl_seconds: z.coerce.number().int().min(1).max(86400).default(60),
+})
+
+type GateFormData = z.infer<typeof gateSchema>
+
+// --- Token reveal panel ---
+
+function TokenReveal({ token, onClose }: { token: string; onClose: () => void }) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+
+  function copy() {
+    navigator.clipboard.writeText(token).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-950/40">
+        <p className="text-xs text-amber-700 dark:text-amber-300">{t('gates.tokenWarning')}</p>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-zinc-100 px-3 py-2 font-mono text-xs text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
+          {token}
+        </code>
+        <button
+          onClick={copy}
+          className="shrink-0 cursor-pointer rounded-lg p-2 text-zinc-400 transition-all hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+          title={copied ? t('gates.tokenCopied') : t('gates.tokenCopy')}
+        >
+          {copied ? (
+            <CheckIcon className="size-4 text-green-500" aria-hidden="true" />
+          ) : (
+            <ClipboardDocumentIcon className="size-4" aria-hidden="true" />
+          )}
+        </button>
+      </div>
+
+      <div className="flex justify-end">
+        <Button onClick={onClose}>{t('action.confirm')}</Button>
+      </div>
+    </div>
+  )
+}
+
+// --- Gate form ---
+
+function GateForm({
+  defaultValues,
+  submitLabel,
+  onSubmit,
+  isPending,
+  error,
+  onCancel,
+}: {
+  defaultValues?: Partial<GateFormData>
+  submitLabel: string
+  onSubmit: (data: GateFormData) => void
+  isPending: boolean
+  error?: boolean
+  onCancel: () => void
+}) {
+  const { t } = useTranslation()
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<GateFormData>({
+    resolver: zodResolver(gateSchema),
+    defaultValues: { status_ttl_seconds: 60, ...defaultValues },
+  })
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <Field
+        label={t('gates.fieldName')}
+        error={errors.name ? t('validation.required') : undefined}
+      >
+        <Input
+          {...register('name')}
+          placeholder={t('gates.fieldNamePlaceholder')}
+          autoComplete="off"
+          autoFocus
+        />
+      </Field>
+
+      <Field
+        label={t('gates.fieldStatusTTL')}
+        hint={t('gates.fieldStatusTTLHint')}
+        error={errors.status_ttl_seconds ? t('validation.minLength', { min: 1 }) : undefined}
+      >
+        <Input {...register('status_ttl_seconds')} type="number" min={1} max={86400} />
+      </Field>
+
+      {error && <p className="text-xs text-red-600 dark:text-red-400">{t('error.generic')}</p>}
+
+      <div className="flex justify-end gap-2 pt-2">
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          {t('action.cancel')}
+        </Button>
+        <Button type="submit" loading={isPending}>
+          {submitLabel}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+// --- Main page ---
+
+type ModalState =
+  | { type: 'create' }
+  | { type: 'edit'; gate: Gate }
+  | { type: 'token'; token: string; gateName: string }
+  | { type: 'regenerate-confirm'; gate: Gate }
+  | null
+
+const PER_PAGE = 20
+
+export function GatesPage() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const { status, user } = useAuth()
+  const queryClient = useQueryClient()
+
+  const [page, setPage] = useState(1)
+  const [modal, setModal] = useState<ModalState>(null)
+  const [gateToDelete, setGateToDelete] = useState<Gate | null>(null)
+
+  useEffect(() => {
+    if (status === 'unauthenticated') navigate({ to: '/login' })
+    else if (status === 'authenticated' && user.role !== 'ADMIN') navigate({ to: '/' })
+  }, [status, user.role, navigate])
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['gates', page],
+    queryFn: () => apiFetch<GatesPage>(`/gates?page=${page}&per_page=${PER_PAGE}`),
+    enabled: status === 'authenticated' && user.role === 'ADMIN',
+  })
+
+  const createMutation = useMutation({
+    mutationFn: (data: GateFormData) =>
+      apiFetch<GateWithToken>('/gates', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['gates'] })
+      setModal({ type: 'token', token: result.token, gateName: result.name })
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: GateFormData }) =>
+      apiFetch<Gate>(`/gates/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gates'] })
+      setModal(null)
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiFetch<undefined>(`/gates/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gates'] })
+      setGateToDelete(null)
+    },
+  })
+
+  const regenerateMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<GateWithToken>(`/gates/${id}/token`, { method: 'POST' }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['gates'] })
+      setModal({ type: 'token', token: result.token, gateName: result.name })
+    },
+  })
+
+  const totalPages = data ? Math.ceil(data.total / PER_PAGE) : 1
+
+  if (status === 'loading' || status === 'unauthenticated') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-100 dark:bg-zinc-900">
+        <div className="size-7 animate-spin rounded-full border-2 border-zinc-300 border-t-indigo-600 dark:border-zinc-700 dark:border-t-indigo-400" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-100 dark:bg-zinc-900">
+      <AppHeader />
+
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <h1 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+              {t('gates.title')}
+            </h1>
+            {data && (
+              <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                {t('gates.count', { count: data.total })}
+              </p>
+            )}
+          </div>
+          <Button size="sm" onClick={() => setModal({ type: 'create' })}>
+            <PlusIcon className="mr-1.5 size-4" aria-hidden="true" />
+            {t('gates.add')}
+          </Button>
+        </div>
+
+        <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-700/60 dark:bg-zinc-800">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="size-6 animate-spin rounded-full border-2 border-zinc-300 border-t-indigo-600 dark:border-zinc-700 dark:border-t-indigo-400" />
+            </div>
+          ) : data?.items.length === 0 ? (
+            <div className="py-16 text-center">
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">{t('gates.empty')}</p>
+            </div>
+          ) : (
+            <>
+              {/* Mobile: card list */}
+              <ul className="divide-y divide-zinc-100 dark:divide-zinc-700/60 sm:hidden">
+                {data?.items.map((gate) => (
+                  <li key={gate.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                        {gate.name}
+                      </p>
+                      <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                        TTL {gate.status_ttl_seconds}s
+                      </p>
+                    </div>
+                    <GateActions gate={gate} setModal={setModal} setGateToDelete={setGateToDelete} />
+                  </li>
+                ))}
+              </ul>
+
+              {/* Desktop: table */}
+              <table className="hidden w-full text-sm sm:table">
+                <thead>
+                  <tr className="border-b border-zinc-200 dark:border-zinc-700">
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      {t('gates.fieldName')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      {t('gates.fieldStatusTTL')}
+                    </th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-700/60">
+                  {data?.items.map((gate) => (
+                    <tr key={gate.id} className="group">
+                      <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">
+                        {gate.name}
+                      </td>
+                      <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">
+                        {gate.status_ttl_seconds}s
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end">
+                          <GateActions gate={gate} setModal={setModal} setGateToDelete={setGateToDelete} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3 dark:border-zinc-700">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                {t('pagination.page', { page, total: totalPages })}
+              </p>
+              <div className="flex gap-1">
+                <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  <ChevronLeftIcon className="size-4" aria-hidden="true" />
+                </Button>
+                <Button variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  <ChevronRightIcon className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Create modal */}
+      <Dialog open={modal?.type === 'create'} onClose={() => setModal(null)} className="relative z-50">
+        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm dark:bg-black/40" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <DialogPanel className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-800">
+            <ModalHeader title={t('gates.modalTitleCreate')} onClose={() => setModal(null)} />
+            <GateForm
+              submitLabel={t('gates.create')}
+              onSubmit={(data) => createMutation.mutate(data)}
+              isPending={createMutation.isPending}
+              error={createMutation.isError}
+              onCancel={() => setModal(null)}
+            />
+          </DialogPanel>
+        </div>
+      </Dialog>
+
+      {/* Edit modal */}
+      <Dialog open={modal?.type === 'edit'} onClose={() => setModal(null)} className="relative z-50">
+        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm dark:bg-black/40" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <DialogPanel className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-800">
+            <ModalHeader title={t('gates.modalTitleEdit')} onClose={() => setModal(null)} />
+            {modal?.type === 'edit' && (
+              <GateForm
+                defaultValues={{ name: modal.gate.name, status_ttl_seconds: modal.gate.status_ttl_seconds }}
+                submitLabel={t('action.save')}
+                onSubmit={(data) => updateMutation.mutate({ id: modal.gate.id, data })}
+                isPending={updateMutation.isPending}
+                error={updateMutation.isError}
+                onCancel={() => setModal(null)}
+              />
+            )}
+          </DialogPanel>
+        </div>
+      </Dialog>
+
+      {/* Token modal */}
+      <Dialog
+        open={modal?.type === 'token'}
+        onClose={() => setModal(null)}
+        className="relative z-50"
+      >
+        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm dark:bg-black/40" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <DialogPanel className="w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-800">
+            <ModalHeader
+              title={t('gates.tokenTitle')}
+              onClose={() => setModal(null)}
+            />
+            {modal?.type === 'token' && (
+              <TokenReveal token={modal.token} onClose={() => setModal(null)} />
+            )}
+          </DialogPanel>
+        </div>
+      </Dialog>
+
+      {/* Regenerate confirm modal */}
+      <Dialog
+        open={modal?.type === 'regenerate-confirm'}
+        onClose={() => setModal(null)}
+        className="relative z-50"
+      >
+        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm dark:bg-black/40" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <DialogPanel className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-800">
+            <DialogTitle className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              {t('gates.tokenRegenerateConfirmTitle')}
+            </DialogTitle>
+            <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+              {t('gates.tokenRegenerateConfirmBody')}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setModal(null)}>
+                {t('action.cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                loading={regenerateMutation.isPending}
+                onClick={() => modal?.type === 'regenerate-confirm' && regenerateMutation.mutate(modal.gate.id)}
+              >
+                {t('gates.tokenRegenerate')}
+              </Button>
+            </div>
+          </DialogPanel>
+        </div>
+      </Dialog>
+
+      {/* Delete confirm modal */}
+      <Dialog open={gateToDelete !== null} onClose={() => setGateToDelete(null)} className="relative z-50">
+        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm dark:bg-black/40" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <DialogPanel className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-800">
+            <DialogTitle className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              {t('gates.deleteTitle')}
+            </DialogTitle>
+            <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+              {t('gates.deleteConfirm', { name: gateToDelete?.name })}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setGateToDelete(null)}>
+                {t('action.cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                loading={deleteMutation.isPending}
+                onClick={() => gateToDelete && deleteMutation.mutate(gateToDelete.id)}
+              >
+                {t('action.delete')}
+              </Button>
+            </div>
+          </DialogPanel>
+        </div>
+      </Dialog>
+    </div>
+  )
+}
+
+// --- Sub-components ---
+
+function ModalHeader({ title, onClose }: { title: string; onClose: () => void }) {
+  return (
+    <div className="mb-5 flex items-center justify-between">
+      <DialogTitle className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+        {title}
+      </DialogTitle>
+      <button
+        onClick={onClose}
+        className="cursor-pointer rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+      >
+        <XMarkIcon className="size-4" aria-hidden="true" />
+      </button>
+    </div>
+  )
+}
+
+function GateActions({
+  gate,
+  setModal,
+  setGateToDelete,
+}: {
+  gate: Gate
+  setModal: (s: ModalState) => void
+  setGateToDelete: (g: Gate) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => setModal({ type: 'edit', gate })}
+        className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+        title={t('action.edit')}
+      >
+        <PencilSquareIcon className="size-4" aria-hidden="true" />
+      </button>
+      <button
+        onClick={() => setModal({ type: 'regenerate-confirm', gate })}
+        className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+        title={t('gates.tokenRegenerate')}
+      >
+        <ArrowPathIcon className="size-4" aria-hidden="true" />
+      </button>
+      <button
+        onClick={() => setGateToDelete(gate)}
+        className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+        title={t('action.delete')}
+      >
+        <TrashIcon className="size-4" aria-hidden="true" />
+      </button>
+    </div>
+  )
+}

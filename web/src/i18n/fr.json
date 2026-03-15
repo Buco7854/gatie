@@ -6,6 +6,7 @@
     "system": "Système"
   },
   "nav": {
+    "gates": "Portails",
     "members": "Membres",
     "logout": "Déconnexion"
   },
@@ -68,6 +69,28 @@
     "deleteTitle": "Supprimer le membre",
     "deleteConfirm": "Êtes-vous sûr de vouloir supprimer {{username}} ? Cette action est irréversible.",
     "cannotEditOwnRole": "Vous ne pouvez pas modifier votre propre rôle."
+  },
+  "gates": {
+    "title": "Portails",
+    "count": "{{count}} portail(s)",
+    "add": "Ajouter",
+    "create": "Créer le portail",
+    "empty": "Aucun portail",
+    "modalTitleCreate": "Nouveau portail",
+    "modalTitleEdit": "Modifier le portail",
+    "deleteTitle": "Supprimer le portail",
+    "deleteConfirm": "Êtes-vous sûr de vouloir supprimer «\u00a0{{name}}\u00a0» ? Cette action est irréversible.",
+    "tokenTitle": "Jeton du portail",
+    "tokenWarning": "Ce jeton ne sera plus affiché. Copiez-le maintenant et conservez-le en sécurité.",
+    "tokenCopied": "Copié !",
+    "tokenCopy": "Copier",
+    "tokenRegenerate": "Regénérer le jeton",
+    "tokenRegenerateConfirmTitle": "Regénérer le jeton ?",
+    "tokenRegenerateConfirmBody": "L'ancien jeton sera immédiatement invalidé. Le portail devra être reconfiguré avec le nouveau jeton.",
+    "fieldName": "Nom du portail",
+    "fieldNamePlaceholder": "Portail principal",
+    "fieldStatusTTL": "TTL du statut (secondes)",
+    "fieldStatusTTLHint": "Durée de validité du dernier statut reçu. Après ce délai, le portail est considéré hors ligne."
   },
   "pagination": {
     "page": "Page {{page}} / {{total}}"
