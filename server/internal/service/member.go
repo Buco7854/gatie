@@ -5,32 +5,32 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/gatie-io/gatie-server/internal/auth"
+	"github.com/gatie-io/gatie-server/internal/convert"
 	"github.com/gatie-io/gatie-server/internal/repository"
+	"github.com/gatie-io/gatie-server/internal/repository/postgres"
 )
 
 var (
-	ErrMemberNotFound  = errors.New("member not found")
-	ErrSelfDelete      = errors.New("cannot delete your own account")
-	ErrSelfRoleChange  = errors.New("cannot change your own role")
-	ErrLastAdmin       = errors.New("cannot delete the last admin")
-	ErrUsernameExists  = errors.New("username already taken")
+	ErrMemberNotFound = errors.New("member not found")
+	ErrSelfDelete     = errors.New("cannot delete your own account")
+	ErrSelfRoleChange = errors.New("cannot change your own role")
+	ErrLastAdmin      = errors.New("cannot delete the last admin")
+	ErrUsernameExists = errors.New("username already taken")
 )
 
 type MemberService struct {
-	queries *repository.Queries
+	queries *postgres.Queries
 }
 
-func NewMemberService(queries *repository.Queries) *MemberService {
+func NewMemberService(queries *postgres.Queries) *MemberService {
 	return &MemberService{queries: queries}
 }
 
 type MemberPage struct {
-	Members []repository.Member
+	Members []Member
 	Total   int64
 }
 
@@ -54,7 +54,7 @@ func (s *MemberService) ListMembers(ctx context.Context, page, perPage int) (*Me
 		return nil, fmt.Errorf("counting members: %w", err)
 	}
 
-	members, err := s.queries.ListMembers(ctx, repository.ListMembersParams{
+	rows, err := s.queries.ListMembers(ctx, postgres.ListMembersParams{
 		Limit:  int32(perPage),
 		Offset: int32((page - 1) * perPage),
 	})
@@ -62,21 +62,33 @@ func (s *MemberService) ListMembers(ctx context.Context, page, perPage int) (*Me
 		return nil, fmt.Errorf("listing members: %w", err)
 	}
 
+	members := make([]Member, len(rows))
+	for i, r := range rows {
+		members[i] = toMember(r)
+	}
+
 	return &MemberPage{Members: members, Total: total}, nil
 }
 
-func (s *MemberService) GetMember(ctx context.Context, id pgtype.UUID) (*repository.Member, error) {
-	member, err := s.queries.GetMemberByID(ctx, id)
+func (s *MemberService) GetMember(ctx context.Context, id string) (*Member, error) {
+	uid, err := convert.ParseUUID(id)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrMemberNotFound
+	}
+
+	row, err := s.queries.GetMemberByID(ctx, uid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrMemberNotFound
 		}
 		return nil, fmt.Errorf("getting member: %w", err)
 	}
-	return &member, nil
+
+	m := toMember(row)
+	return &m, nil
 }
 
-func (s *MemberService) CreateMember(ctx context.Context, input CreateMemberInput) (*repository.Member, error) {
+func (s *MemberService) CreateMember(ctx context.Context, input CreateMemberInput) (*Member, error) {
 	hash, err := auth.HashPassword(input.Password)
 	if err != nil {
 		return nil, err
@@ -87,28 +99,33 @@ func (s *MemberService) CreateMember(ctx context.Context, input CreateMemberInpu
 		displayName = pgtype.Text{String: input.DisplayName, Valid: true}
 	}
 
-	member, err := s.queries.CreateMember(ctx, repository.CreateMemberParams{
+	row, err := s.queries.CreateMember(ctx, postgres.CreateMemberParams{
 		Username:     input.Username,
 		DisplayName:  displayName,
 		PasswordHash: hash,
 		Role:         input.Role,
 	})
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if errors.Is(err, repository.ErrConflict) {
 			return nil, ErrUsernameExists
 		}
 		return nil, fmt.Errorf("creating member: %w", err)
 	}
 
-	return &member, nil
+	m := toMember(row)
+	return &m, nil
 }
 
-func (s *MemberService) UpdateMember(ctx context.Context, id pgtype.UUID, input UpdateMemberInput) (*repository.Member, error) {
-	if input.CallerID == uuidToString(id) {
-		current, err := s.queries.GetMemberByID(ctx, id)
+func (s *MemberService) UpdateMember(ctx context.Context, id string, input UpdateMemberInput) (*Member, error) {
+	uid, err := convert.ParseUUID(id)
+	if err != nil {
+		return nil, ErrMemberNotFound
+	}
+
+	if input.CallerID == id {
+		current, err := s.queries.GetMemberByID(ctx, uid)
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if errors.Is(err, repository.ErrNotFound) {
 				return nil, ErrMemberNotFound
 			}
 			return nil, fmt.Errorf("getting member: %w", err)
@@ -123,40 +140,46 @@ func (s *MemberService) UpdateMember(ctx context.Context, id pgtype.UUID, input 
 		displayName = pgtype.Text{String: input.DisplayName, Valid: true}
 	}
 
-	member, err := s.queries.UpdateMember(ctx, repository.UpdateMemberParams{
-		ID:          id,
+	row, err := s.queries.UpdateMember(ctx, postgres.UpdateMemberParams{
+		ID:          uid,
 		Username:    input.Username,
 		DisplayName: displayName,
 		Role:        input.Role,
 	})
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrMemberNotFound
 		}
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if errors.Is(err, repository.ErrConflict) {
 			return nil, ErrUsernameExists
 		}
 		return nil, fmt.Errorf("updating member: %w", err)
 	}
 
-	return &member, nil
+	m := toMember(row)
+	return &m, nil
 }
 
-func (s *MemberService) DeleteMember(ctx context.Context, id pgtype.UUID, callerID string) error {
-	member, err := s.queries.GetMemberByID(ctx, id)
+func (s *MemberService) DeleteMember(ctx context.Context, id string, callerID string) error {
+	uid, err := convert.ParseUUID(id)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		return ErrMemberNotFound
+	}
+
+	row, err := s.queries.GetMemberByID(ctx, uid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
 			return ErrMemberNotFound
 		}
 		return fmt.Errorf("getting member: %w", err)
 	}
 
-	if uuidToString(member.ID) == callerID {
+	memberID := convert.UUIDToString(row.ID)
+	if memberID == callerID {
 		return ErrSelfDelete
 	}
 
-	if member.Role == "ADMIN" {
+	if row.Role == "ADMIN" {
 		adminCount, err := s.queries.CountMembersByRole(ctx, "ADMIN")
 		if err != nil {
 			return fmt.Errorf("counting admins: %w", err)
@@ -166,5 +189,20 @@ func (s *MemberService) DeleteMember(ctx context.Context, id pgtype.UUID, caller
 		}
 	}
 
-	return s.queries.DeleteMember(ctx, id)
+	return s.queries.DeleteMember(ctx, uid)
+}
+
+func toMember(r postgres.Member) Member {
+	displayName := ""
+	if r.DisplayName.Valid {
+		displayName = r.DisplayName.String
+	}
+	return Member{
+		ID:          convert.UUIDToString(r.ID),
+		Username:    r.Username,
+		DisplayName: displayName,
+		Role:        r.Role,
+		CreatedAt:   r.CreatedAt.Time,
+		UpdatedAt:   r.UpdatedAt.Time,
+	}
 }

@@ -3,6 +3,10 @@ package handler
 import (
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/gatie-io/gatie-server/internal/convert"
 )
 
 func TestFormatSeconds(t *testing.T) {
@@ -24,7 +28,7 @@ func TestFormatSeconds(t *testing.T) {
 	}
 }
 
-func TestUUIDBytesToString(t *testing.T) {
+func TestUUIDToString(t *testing.T) {
 	// UUID v4: 550e8400-e29b-41d4-a716-446655440000
 	bytes := [16]byte{
 		0x55, 0x0e, 0x84, 0x00,
@@ -34,7 +38,8 @@ func TestUUIDBytesToString(t *testing.T) {
 		0x44, 0x66, 0x55, 0x44, 0x00, 0x00,
 	}
 
-	result := uuidBytesToString(bytes)
+	u := pgtype.UUID{Bytes: bytes, Valid: true}
+	result := convert.UUIDToString(u)
 	expected := "550e8400-e29b-41d4-a716-446655440000"
 
 	if result != expected {
@@ -49,8 +54,7 @@ func TestBuildRefreshCookie(t *testing.T) {
 		t.Fatal("cookie should not be empty")
 	}
 
-	// Verify key attributes
-	expected := "refresh_token=test-token; HttpOnly; Secure; SameSite=Strict; Path=/auth; Max-Age=604800"
+	expected := "refresh_token=test-token; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=604800"
 	if cookie != expected {
 		t.Errorf("got:\n  %s\nwant:\n  %s", cookie, expected)
 	}

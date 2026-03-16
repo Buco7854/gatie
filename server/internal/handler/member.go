@@ -7,19 +7,25 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/gatie-io/gatie-server/internal/middleware"
-	"github.com/gatie-io/gatie-server/internal/repository"
 	"github.com/gatie-io/gatie-server/internal/service"
 )
 
+type MemberServicer interface {
+	ListMembers(ctx context.Context, page, perPage int) (*service.MemberPage, error)
+	GetMember(ctx context.Context, id string) (*service.Member, error)
+	CreateMember(ctx context.Context, input service.CreateMemberInput) (*service.Member, error)
+	UpdateMember(ctx context.Context, id string, input service.UpdateMemberInput) (*service.Member, error)
+	DeleteMember(ctx context.Context, id string, callerID string) error
+}
+
 type MemberHandler struct {
-	memberService *service.MemberService
+	memberService MemberServicer
 	middlewares   huma.Middlewares
 }
 
-func NewMemberHandler(memberService *service.MemberService, authMW, adminMW func(huma.Context, func(huma.Context))) *MemberHandler {
+func NewMemberHandler(memberService MemberServicer, authMW, adminMW func(huma.Context, func(huma.Context))) *MemberHandler {
 	return &MemberHandler{
 		memberService: memberService,
 		middlewares:   huma.Middlewares{authMW, adminMW},
@@ -150,7 +156,7 @@ func (h *MemberHandler) Register(api huma.API) {
 func (h *MemberHandler) listMembers(ctx context.Context, input *ListMembersInput) (*ListMembersOutput, error) {
 	page, err := h.memberService.ListMembers(ctx, input.Page, input.PerPage)
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to list members")
+		return nil, huma.Error500InternalServerError("failed to list members", err)
 	}
 
 	items := make([]MemberBody, len(page.Members))
@@ -186,35 +192,25 @@ func (h *MemberHandler) createMember(ctx context.Context, input *CreateMemberBod
 				Value:    input.Body.Username,
 			})
 		}
-		return nil, huma.Error500InternalServerError("failed to create member")
+		return nil, huma.Error500InternalServerError("failed to create member", err)
 	}
 
 	return &MemberOutput{Body: toMemberBody(*member)}, nil
 }
 
 func (h *MemberHandler) getMember(ctx context.Context, input *GetMemberInput) (*MemberOutput, error) {
-	id, err := parseUUID(input.MemberID)
-	if err != nil {
-		return nil, huma.Error400BadRequest("invalid member ID")
-	}
-
-	member, err := h.memberService.GetMember(ctx, id)
+	member, err := h.memberService.GetMember(ctx, input.MemberID)
 	if err != nil {
 		if errors.Is(err, service.ErrMemberNotFound) {
 			return nil, huma.Error404NotFound("member not found")
 		}
-		return nil, huma.Error500InternalServerError("failed to get member")
+		return nil, huma.Error500InternalServerError("failed to get member", err)
 	}
 
 	return &MemberOutput{Body: toMemberBody(*member)}, nil
 }
 
 func (h *MemberHandler) updateMember(ctx context.Context, input *UpdateMemberInput) (*MemberOutput, error) {
-	id, err := parseUUID(input.MemberID)
-	if err != nil {
-		return nil, huma.Error400BadRequest("invalid member ID")
-	}
-
 	claims := middleware.GetClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, huma.Error401Unauthorized("unauthorized")
@@ -225,7 +221,7 @@ func (h *MemberHandler) updateMember(ctx context.Context, input *UpdateMemberInp
 		displayName = *input.Body.DisplayName
 	}
 
-	member, err := h.memberService.UpdateMember(ctx, id, service.UpdateMemberInput{
+	member, err := h.memberService.UpdateMember(ctx, input.MemberID, service.UpdateMemberInput{
 		Username:    input.Body.Username,
 		DisplayName: displayName,
 		Role:        input.Body.Role,
@@ -244,24 +240,19 @@ func (h *MemberHandler) updateMember(ctx context.Context, input *UpdateMemberInp
 				Value:    input.Body.Username,
 			})
 		}
-		return nil, huma.Error500InternalServerError("failed to update member")
+		return nil, huma.Error500InternalServerError("failed to update member", err)
 	}
 
 	return &MemberOutput{Body: toMemberBody(*member)}, nil
 }
 
 func (h *MemberHandler) deleteMember(ctx context.Context, input *DeleteMemberInput) (*struct{}, error) {
-	id, err := parseUUID(input.MemberID)
-	if err != nil {
-		return nil, huma.Error400BadRequest("invalid member ID")
-	}
-
 	claims := middleware.GetClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, huma.Error401Unauthorized("unauthorized")
 	}
 
-	err = h.memberService.DeleteMember(ctx, id, claims.MemberID)
+	err := h.memberService.DeleteMember(ctx, input.MemberID, claims.MemberID)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrMemberNotFound):
@@ -271,7 +262,7 @@ func (h *MemberHandler) deleteMember(ctx context.Context, input *DeleteMemberInp
 		case errors.Is(err, service.ErrLastAdmin):
 			return nil, huma.Error422UnprocessableEntity("cannot delete the last admin")
 		default:
-			return nil, huma.Error500InternalServerError("failed to delete member")
+			return nil, huma.Error500InternalServerError("failed to delete member", err)
 		}
 	}
 
@@ -280,25 +271,17 @@ func (h *MemberHandler) deleteMember(ctx context.Context, input *DeleteMemberInp
 
 // --- Helpers ---
 
-func toMemberBody(m repository.Member) MemberBody {
+func toMemberBody(m service.Member) MemberBody {
 	var displayName *string
-	if m.DisplayName.Valid {
-		displayName = &m.DisplayName.String
+	if m.DisplayName != "" {
+		displayName = &m.DisplayName
 	}
 	return MemberBody{
-		ID:          uuidBytesToString(m.ID.Bytes),
+		ID:          m.ID,
 		Username:    m.Username,
 		DisplayName: displayName,
 		Role:        m.Role,
-		CreatedAt:   m.CreatedAt.Time.Format(time.RFC3339),
-		UpdatedAt:   m.UpdatedAt.Time.Format(time.RFC3339),
+		CreatedAt:   m.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   m.UpdatedAt.Format(time.RFC3339),
 	}
-}
-
-func parseUUID(s string) (pgtype.UUID, error) {
-	var id pgtype.UUID
-	if err := id.Scan(s); err != nil {
-		return pgtype.UUID{}, err
-	}
-	return id, nil
 }

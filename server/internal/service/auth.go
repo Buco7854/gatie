@@ -2,22 +2,32 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gatie-io/gatie-server/internal/auth"
-	"github.com/gatie-io/gatie-server/internal/repository"
+	"github.com/gatie-io/gatie-server/internal/repository/postgres"
 )
 
 type AuthService struct {
-	queries *repository.Queries
+	queries *postgres.Queries
+	pool    *pgxpool.Pool
 	jwt     *auth.JWTManager
 }
 
-func NewAuthService(queries *repository.Queries, jwt *auth.JWTManager) *AuthService {
-	return &AuthService{queries: queries, jwt: jwt}
+var (
+	ErrSetupAlreadyCompleted = errors.New("setup already completed")
+	ErrInvalidCredentials    = errors.New("invalid credentials")
+	ErrInvalidRefreshToken   = errors.New("invalid refresh token")
+	ErrRefreshTokenExpired   = errors.New("refresh token expired")
+)
+
+func NewAuthService(queries *postgres.Queries, pool *pgxpool.Pool, jwt *auth.JWTManager) *AuthService {
+	return &AuthService{queries: queries, pool: pool, jwt: jwt}
 }
 
 type SetupInput struct {
@@ -28,7 +38,7 @@ type SetupInput struct {
 type AuthResult struct {
 	AccessToken  string
 	RefreshToken string
-	Member       repository.Member
+	Member       Member
 }
 
 func (s *AuthService) NeedsSetup(ctx context.Context) (bool, error) {
@@ -45,7 +55,7 @@ func (s *AuthService) Setup(ctx context.Context, input SetupInput) (*AuthResult,
 		return nil, fmt.Errorf("counting members: %w", err)
 	}
 	if count > 0 {
-		return nil, fmt.Errorf("setup already completed")
+		return nil, ErrSetupAlreadyCompleted
 	}
 
 	hash, err := auth.HashPassword(input.Password)
@@ -53,7 +63,7 @@ func (s *AuthService) Setup(ctx context.Context, input SetupInput) (*AuthResult,
 		return nil, err
 	}
 
-	member, err := s.queries.CreateMember(ctx, repository.CreateMemberParams{
+	row, err := s.queries.CreateMember(ctx, postgres.CreateMemberParams{
 		Username:     input.Username,
 		PasswordHash: hash,
 		Role:         "ADMIN",
@@ -62,7 +72,7 @@ func (s *AuthService) Setup(ctx context.Context, input SetupInput) (*AuthResult,
 		return nil, fmt.Errorf("creating admin: %w", err)
 	}
 
-	return s.generateTokens(ctx, member)
+	return s.generateTokens(ctx, row)
 }
 
 type LoginInput struct {
@@ -71,16 +81,16 @@ type LoginInput struct {
 }
 
 func (s *AuthService) Login(ctx context.Context, input LoginInput) (*AuthResult, error) {
-	member, err := s.queries.GetMemberByUsername(ctx, input.Username)
+	row, err := s.queries.GetMemberByUsername(ctx, input.Username)
 	if err != nil {
-		return nil, fmt.Errorf("invalid credentials")
+		return nil, ErrInvalidCredentials
 	}
 
-	if !auth.CheckPassword(input.Password, member.PasswordHash) {
-		return nil, fmt.Errorf("invalid credentials")
+	if !auth.CheckPassword(input.Password, row.PasswordHash) {
+		return nil, ErrInvalidCredentials
 	}
 
-	return s.generateTokens(ctx, member)
+	return s.generateTokens(ctx, row)
 }
 
 func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*AuthResult, error) {
@@ -88,25 +98,63 @@ func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*AuthResult
 
 	rt, err := s.queries.GetRefreshTokenByHash(ctx, tokenHash)
 	if err != nil {
-		return nil, fmt.Errorf("invalid refresh token")
+		return nil, ErrInvalidRefreshToken
 	}
 
 	if rt.ExpiresAt.Time.Before(time.Now()) {
 		s.queries.DeleteRefreshToken(ctx, rt.ID)
-		return nil, fmt.Errorf("refresh token expired")
+		return nil, ErrRefreshTokenExpired
 	}
 
-	// Rotation : supprimer l'ancien, en créer un nouveau
-	if err := s.queries.DeleteRefreshToken(ctx, rt.ID); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.queries.WithTx(tx)
+
+	if err := qtx.DeleteRefreshToken(ctx, rt.ID); err != nil {
 		return nil, fmt.Errorf("revoking old token: %w", err)
 	}
 
-	member, err := s.queries.GetMemberByID(ctx, rt.MemberID)
+	row, err := qtx.GetMemberByID(ctx, rt.MemberID)
 	if err != nil {
-		return nil, fmt.Errorf("member not found")
+		return nil, fmt.Errorf("getting member for refresh: %w", err)
 	}
 
-	return s.generateTokens(ctx, member)
+	member := toMember(row)
+	accessToken, err := s.jwt.GenerateAccessToken(member.ID, member.Role, member.Username)
+	if err != nil {
+		return nil, fmt.Errorf("generating access token: %w", err)
+	}
+
+	rawRefresh, err := auth.GenerateRefreshToken()
+	if err != nil {
+		return nil, err
+	}
+
+	refreshHash := auth.HashToken(rawRefresh)
+	expiresAt := time.Now().Add(s.jwt.RefreshDuration())
+
+	_, err = qtx.CreateRefreshToken(ctx, postgres.CreateRefreshTokenParams{
+		MemberID:  rt.MemberID,
+		TokenHash: refreshHash,
+		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("storing refresh token: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("committing transaction: %w", err)
+	}
+
+	return &AuthResult{
+		AccessToken:  accessToken,
+		RefreshToken: rawRefresh,
+		Member:       member,
+	}, nil
 }
 
 func (s *AuthService) Logout(ctx context.Context, rawToken string) error {
@@ -120,10 +168,10 @@ func (s *AuthService) Logout(ctx context.Context, rawToken string) error {
 	return s.queries.DeleteRefreshToken(ctx, rt.ID)
 }
 
-func (s *AuthService) generateTokens(ctx context.Context, member repository.Member) (*AuthResult, error) {
-	memberID := uuidToString(member.ID)
+func (s *AuthService) generateTokens(ctx context.Context, row postgres.Member) (*AuthResult, error) {
+	member := toMember(row)
 
-	accessToken, err := s.jwt.GenerateAccessToken(memberID, member.Role, member.Username)
+	accessToken, err := s.jwt.GenerateAccessToken(member.ID, member.Role, member.Username)
 	if err != nil {
 		return nil, fmt.Errorf("generating access token: %w", err)
 	}
@@ -136,8 +184,8 @@ func (s *AuthService) generateTokens(ctx context.Context, member repository.Memb
 	refreshHash := auth.HashToken(rawRefresh)
 	expiresAt := time.Now().Add(s.jwt.RefreshDuration())
 
-	_, err = s.queries.CreateRefreshToken(ctx, repository.CreateRefreshTokenParams{
-		MemberID:  member.ID,
+	_, err = s.queries.CreateRefreshToken(ctx, postgres.CreateRefreshTokenParams{
+		MemberID:  row.ID,
 		TokenHash: refreshHash,
 		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
 	})
@@ -150,8 +198,4 @@ func (s *AuthService) generateTokens(ctx context.Context, member repository.Memb
 		RefreshToken: rawRefresh,
 		Member:       member,
 	}, nil
-}
-
-func uuidToString(u pgtype.UUID) string {
-	return fmt.Sprintf("%x-%x-%x-%x-%x", u.Bytes[0:4], u.Bytes[4:6], u.Bytes[6:8], u.Bytes[8:10], u.Bytes[10:16])
 }

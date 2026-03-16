@@ -2,7 +2,8 @@ package database
 
 import (
 	"embed"
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -15,17 +16,20 @@ var migrations embed.FS
 func RunMigrations(dbpool *pgxpool.Pool) {
 	goose.SetBaseFS(migrations)
 	if err := goose.SetDialect("postgres"); err != nil {
-		log.Fatalf("Migration dialect error: %v", err)
+		slog.Error("migration dialect error", "error", err)
+		os.Exit(1)
 	}
 
 	db := dbpool.Config().ConnConfig.ConnString()
 	conn, err := goose.OpenDBWithDriver("pgx", db)
 	if err != nil {
-		log.Fatalf("Migration connection error: %v", err)
+		slog.Error("migration connection error", "error", err)
+		os.Exit(1)
 	}
 	defer conn.Close()
 
 	if err := goose.Up(conn, "migrations"); err != nil {
-		log.Fatalf("Migration error: %v", err)
+		slog.Error("migration error", "error", err)
+		os.Exit(1)
 	}
 }

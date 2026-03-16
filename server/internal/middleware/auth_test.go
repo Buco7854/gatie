@@ -29,7 +29,7 @@ func newTestRouter(jwtManager *auth.JWTManager) *chi.Mux {
 		OperationID: "test",
 		Method:      http.MethodGet,
 		Path:        "/test",
-		Middlewares: huma.Middlewares{NewAuthMiddleware(jwtManager)},
+		Middlewares: huma.Middlewares{NewAuthMiddleware(api, jwtManager)},
 	}, func(ctx context.Context, input *struct{}) (*testOutput, error) {
 		out := &testOutput{}
 		out.Body.Message = "ok"

@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -15,40 +14,29 @@ type contextKey string
 
 const ClaimsKey contextKey = "claims"
 
-func NewAuthMiddleware(jwt *auth.JWTManager) func(ctx huma.Context, next func(huma.Context)) {
+func NewAuthMiddleware(api huma.API, jwt *auth.JWTManager) func(ctx huma.Context, next func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		header := ctx.Header("Authorization")
 		if header == "" {
-			writeError(ctx, http.StatusUnauthorized, "missing authorization header")
+			huma.WriteErr(api, ctx, http.StatusUnauthorized, "missing authorization header")
 			return
 		}
 
 		token, found := strings.CutPrefix(header, "Bearer ")
 		if !found {
-			writeError(ctx, http.StatusUnauthorized, "invalid authorization header format")
+			huma.WriteErr(api, ctx, http.StatusUnauthorized, "invalid authorization header format")
 			return
 		}
 
 		claims, err := jwt.ValidateAccessToken(token)
 		if err != nil {
-			writeError(ctx, http.StatusUnauthorized, "invalid or expired token")
+			huma.WriteErr(api, ctx, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
 
 		ctx = huma.WithValue(ctx, ClaimsKey, claims)
 		next(ctx)
 	}
-}
-
-func writeError(ctx huma.Context, status int, message string) {
-	ctx.SetStatus(status)
-	ctx.SetHeader("Content-Type", "application/problem+json")
-	body := map[string]interface{}{
-		"status": status,
-		"title":  http.StatusText(status),
-		"detail": message,
-	}
-	json.NewEncoder(ctx.BodyWriter()).Encode(body)
 }
 
 func GetClaims(ctx huma.Context) *auth.Claims {

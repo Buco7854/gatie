@@ -15,7 +15,7 @@ L'expression de besoin complète est dans `EXPRESSION_OF_NEED.md`.
 |-----------|-------|---------|
 | Framework HTTP | **Huma v2** | `github.com/danielgtaylor/huma/v2` |
 | Router | **Chi** | `github.com/go-chi/chi/v5` (via `humachi`) |
-| DB access | **sqlc** | Génère du Go type-safe à partir de SQL pur |
+| DB access | **pgx** | SQL pur via `github.com/jackc/pgx/v5` |
 | Migrations | **goose** | `github.com/pressly/goose/v3` |
 | Base de données | **PostgreSQL 18** | `github.com/jackc/pgx/v5` |
 | Cache | **Valkey** (Redis-compatible) | `github.com/valkey-io/valkey-go` |
@@ -61,13 +61,12 @@ gatie/
 │   │   ├── database/        # Migrations (embed + goose)
 │   │   │   └── migrations/  # Fichiers SQL de migration
 │   │   ├── handler/         # Routes HTTP (Huma operations)
-│   │   ├── repository/      # Accès DB (généré par sqlc, NE PAS MODIFIER)
+│   │   ├── repository/      # Erreurs domaine (ErrNotFound, ErrConflict)
+│   │   │   └── postgres/    # Accès DB (SQL pur via pgx)
 │   │   ├── service/         # Logique métier
 │   │   ├── mqtt/            # Client MQTT + handlers
 │   │   ├── middleware/      # Auth, rate-limit, etc.
 │   │   └── model/           # Structs partagés (domain)
-│   ├── queries/             # Fichiers SQL sources pour sqlc
-│   ├── sqlc.yaml
 │   ├── go.mod
 │   └── go.sum
 ├── web/                     # React SPA
@@ -294,7 +293,7 @@ Le fichier `PROGRESS.md` à la racine est mis à jour après chaque session avec
 - Erreurs wrappées avec `fmt.Errorf("context: %w", err)`
 - Pas de `panic` en dehors de `main`
 - Tests dans le même package avec `_test.go`
-- SQL dans `queries/` (sqlc) et `migrations/` (goose)
+- SQL dans `migrations/` (goose)
 - **Commentaires minimaux** : ne commenter que ce qui est réellement difficile à comprendre ou non-intuitif. Pas de commentaires évidents ou redondants.
 - **UUIDs** : utiliser UUID v7 (support natif PostgreSQL 18 via `uuidv7()`) pour l'ordre chronologique
 

@@ -7,18 +7,25 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/gatie-io/gatie-server/internal/repository"
 	"github.com/gatie-io/gatie-server/internal/service"
 )
 
+type GateServicer interface {
+	ListGates(ctx context.Context, page, perPage int) (*service.GatePage, error)
+	GetGate(ctx context.Context, id string) (*service.Gate, error)
+	CreateGate(ctx context.Context, input service.CreateGateInput) (*service.GateWithToken, error)
+	UpdateGate(ctx context.Context, id string, input service.UpdateGateInput) (*service.Gate, error)
+	DeleteGate(ctx context.Context, id string) error
+	RegenerateToken(ctx context.Context, id string) (*service.GateWithToken, error)
+}
+
 type GateHandler struct {
-	gateService *service.GateService
+	gateService GateServicer
 	middlewares huma.Middlewares
 }
 
-func NewGateHandler(gateService *service.GateService, authMW, adminMW func(huma.Context, func(huma.Context))) *GateHandler {
+func NewGateHandler(gateService GateServicer, authMW, adminMW func(huma.Context, func(huma.Context))) *GateHandler {
 	return &GateHandler{
 		gateService: gateService,
 		middlewares: huma.Middlewares{authMW, adminMW},
@@ -168,7 +175,7 @@ func (h *GateHandler) Register(api huma.API) {
 func (h *GateHandler) listGates(ctx context.Context, input *ListGatesInput) (*ListGatesOutput, error) {
 	page, err := h.gateService.ListGates(ctx, input.Page, input.PerPage)
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to list gates")
+		return nil, huma.Error500InternalServerError("failed to list gates", err)
 	}
 
 	items := make([]GateBody, len(page.Gates))
@@ -190,7 +197,7 @@ func (h *GateHandler) createGate(ctx context.Context, input *CreateGateBodyInput
 		StatusTTLSeconds: input.Body.StatusTTLSeconds,
 	})
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to create gate")
+		return nil, huma.Error500InternalServerError("failed to create gate", err)
 	}
 
 	return &GateWithTokenOutput{Body: GateWithTokenBody{
@@ -200,29 +207,19 @@ func (h *GateHandler) createGate(ctx context.Context, input *CreateGateBodyInput
 }
 
 func (h *GateHandler) getGate(ctx context.Context, input *GetGateInput) (*GateOutput, error) {
-	id, err := parseGateUUID(input.GateID)
-	if err != nil {
-		return nil, huma.Error400BadRequest("invalid gate ID")
-	}
-
-	gate, err := h.gateService.GetGate(ctx, id)
+	gate, err := h.gateService.GetGate(ctx, input.GateID)
 	if err != nil {
 		if errors.Is(err, service.ErrGateNotFound) {
 			return nil, huma.Error404NotFound("gate not found")
 		}
-		return nil, huma.Error500InternalServerError("failed to get gate")
+		return nil, huma.Error500InternalServerError("failed to get gate", err)
 	}
 
 	return &GateOutput{Body: toGateBody(*gate)}, nil
 }
 
 func (h *GateHandler) updateGate(ctx context.Context, input *UpdateGateInput) (*GateOutput, error) {
-	id, err := parseGateUUID(input.GateID)
-	if err != nil {
-		return nil, huma.Error400BadRequest("invalid gate ID")
-	}
-
-	gate, err := h.gateService.UpdateGate(ctx, id, service.UpdateGateInput{
+	gate, err := h.gateService.UpdateGate(ctx, input.GateID, service.UpdateGateInput{
 		Name:             input.Body.Name,
 		StatusTTLSeconds: input.Body.StatusTTLSeconds,
 	})
@@ -230,40 +227,30 @@ func (h *GateHandler) updateGate(ctx context.Context, input *UpdateGateInput) (*
 		if errors.Is(err, service.ErrGateNotFound) {
 			return nil, huma.Error404NotFound("gate not found")
 		}
-		return nil, huma.Error500InternalServerError("failed to update gate")
+		return nil, huma.Error500InternalServerError("failed to update gate", err)
 	}
 
 	return &GateOutput{Body: toGateBody(*gate)}, nil
 }
 
 func (h *GateHandler) deleteGate(ctx context.Context, input *DeleteGateInput) (*struct{}, error) {
-	id, err := parseGateUUID(input.GateID)
-	if err != nil {
-		return nil, huma.Error400BadRequest("invalid gate ID")
-	}
-
-	if err := h.gateService.DeleteGate(ctx, id); err != nil {
+	if err := h.gateService.DeleteGate(ctx, input.GateID); err != nil {
 		if errors.Is(err, service.ErrGateNotFound) {
 			return nil, huma.Error404NotFound("gate not found")
 		}
-		return nil, huma.Error500InternalServerError("failed to delete gate")
+		return nil, huma.Error500InternalServerError("failed to delete gate", err)
 	}
 
 	return nil, nil
 }
 
 func (h *GateHandler) regenerateToken(ctx context.Context, input *RegenerateTokenInput) (*GateWithTokenOutput, error) {
-	id, err := parseGateUUID(input.GateID)
-	if err != nil {
-		return nil, huma.Error400BadRequest("invalid gate ID")
-	}
-
-	result, err := h.gateService.RegenerateToken(ctx, id)
+	result, err := h.gateService.RegenerateToken(ctx, input.GateID)
 	if err != nil {
 		if errors.Is(err, service.ErrGateNotFound) {
 			return nil, huma.Error404NotFound("gate not found")
 		}
-		return nil, huma.Error500InternalServerError("failed to regenerate token")
+		return nil, huma.Error500InternalServerError("failed to regenerate token", err)
 	}
 
 	return &GateWithTokenOutput{Body: GateWithTokenBody{
@@ -274,20 +261,12 @@ func (h *GateHandler) regenerateToken(ctx context.Context, input *RegenerateToke
 
 // --- Helpers ---
 
-func toGateBody(g repository.Gate) GateBody {
+func toGateBody(g service.Gate) GateBody {
 	return GateBody{
-		ID:               uuidBytesToString(g.ID.Bytes),
+		ID:               g.ID,
 		Name:             g.Name,
-		StatusTTLSeconds: g.StatusTtlSeconds,
-		CreatedAt:        g.CreatedAt.Time.Format(time.RFC3339),
-		UpdatedAt:        g.UpdatedAt.Time.Format(time.RFC3339),
+		StatusTTLSeconds: g.StatusTTLSeconds,
+		CreatedAt:        g.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:        g.UpdatedAt.Format(time.RFC3339),
 	}
-}
-
-func parseGateUUID(s string) (pgtype.UUID, error) {
-	var id pgtype.UUID
-	if err := id.Scan(s); err != nil {
-		return pgtype.UUID{}, err
-	}
-	return id, nil
 }

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -10,11 +11,19 @@ import (
 	"github.com/gatie-io/gatie-server/internal/service"
 )
 
-type AuthHandler struct {
-	authService *service.AuthService
+type AuthServicer interface {
+	NeedsSetup(ctx context.Context) (bool, error)
+	Setup(ctx context.Context, input service.SetupInput) (*service.AuthResult, error)
+	Login(ctx context.Context, input service.LoginInput) (*service.AuthResult, error)
+	Refresh(ctx context.Context, rawToken string) (*service.AuthResult, error)
+	Logout(ctx context.Context, rawToken string) error
 }
 
-func NewAuthHandler(authService *service.AuthService) *AuthHandler {
+type AuthHandler struct {
+	authService AuthServicer
+}
+
+func NewAuthHandler(authService AuthServicer) *AuthHandler {
 	return &AuthHandler{authService: authService}
 }
 
@@ -28,11 +37,11 @@ type SetupInput struct {
 }
 
 type AuthTokenBody struct {
-	AccessToken  string     `json:"access_token" doc:"JWT access token"`
-	RefreshToken string     `json:"refresh_token" doc:"Opaque refresh token"`
-	MemberID     string     `json:"member_id" doc:"Member UUID"`
-	Role         string     `json:"role" doc:"Member role"`
-	Username     string     `json:"username" doc:"Member username"`
+	AccessToken  string `json:"access_token" doc:"JWT access token"`
+	RefreshToken string `json:"refresh_token" doc:"Opaque refresh token"`
+	MemberID     string `json:"member_id" doc:"Member UUID"`
+	Role         string `json:"role" doc:"Member role"`
+	Username     string `json:"username" doc:"Member username"`
 }
 
 type AuthTokenOutput struct {
@@ -100,7 +109,7 @@ func (h *AuthHandler) Register(api huma.API) {
 func (h *AuthHandler) setupStatus(ctx context.Context, input *struct{}) (*SetupStatusOutput, error) {
 	needed, err := h.authService.NeedsSetup(ctx)
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to check setup status")
+		return nil, huma.Error500InternalServerError("failed to check setup status", err)
 	}
 	return &SetupStatusOutput{Body: SetupStatusBody{NeedsSetup: needed}}, nil
 }
@@ -111,10 +120,10 @@ func (h *AuthHandler) setup(ctx context.Context, input *SetupInput) (*AuthTokenO
 		Password: input.Body.Password,
 	})
 	if err != nil {
-		if err.Error() == "setup already completed" {
+		if errors.Is(err, service.ErrSetupAlreadyCompleted) {
 			return nil, huma.Error409Conflict("setup already completed")
 		}
-		return nil, huma.Error500InternalServerError("failed to create admin account")
+		return nil, huma.Error500InternalServerError("failed to create admin account", err)
 	}
 
 	return buildAuthOutput(result), nil
@@ -172,8 +181,6 @@ func (h *AuthHandler) logout(ctx context.Context, input *LogoutInput) (*struct{}
 // --- Helpers ---
 
 func buildAuthOutput(result *service.AuthResult) *AuthTokenOutput {
-	memberID := uuidBytesToString(result.Member.ID.Bytes)
-
 	cookie := buildRefreshCookie(result.RefreshToken, 7*24*time.Hour)
 
 	return &AuthTokenOutput{
@@ -181,7 +188,7 @@ func buildAuthOutput(result *service.AuthResult) *AuthTokenOutput {
 		Body: AuthTokenBody{
 			AccessToken:  result.AccessToken,
 			RefreshToken: result.RefreshToken,
-			MemberID:     memberID,
+			MemberID:     result.Member.ID,
 			Role:         result.Member.Role,
 			Username:     result.Member.Username,
 		},
@@ -190,7 +197,7 @@ func buildAuthOutput(result *service.AuthResult) *AuthTokenOutput {
 
 func buildRefreshCookie(token string, maxAge time.Duration) string {
 	return "refresh_token=" + token +
-		"; HttpOnly; SameSite=Strict; Path=/api/auth" +
+		"; HttpOnly; Secure; SameSite=Strict; Path=/api/auth" +
 		"; Max-Age=" + formatSeconds(maxAge)
 }
 
@@ -213,18 +220,4 @@ func formatSeconds(d time.Duration) string {
 		digits[i], digits[j] = digits[j], digits[i]
 	}
 	return result + string(digits)
-}
-
-func uuidBytesToString(u [16]byte) string {
-	return formatHex(u[0:4]) + "-" + formatHex(u[4:6]) + "-" + formatHex(u[6:8]) + "-" + formatHex(u[8:10]) + "-" + formatHex(u[10:16])
-}
-
-func formatHex(b []byte) string {
-	const hexDigits = "0123456789abcdef"
-	result := make([]byte, len(b)*2)
-	for i, v := range b {
-		result[i*2] = hexDigits[v>>4]
-		result[i*2+1] = hexDigits[v&0x0f]
-	}
-	return string(result)
 }

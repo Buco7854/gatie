@@ -29,6 +29,3 @@ Thumbs.db
 # Node (frontend)
 web/node_modules/
 web/dist/
-
-# Generated (sqlc) - tracked intentionally
-# server/internal/repository/
