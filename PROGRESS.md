@@ -1,6 +1,165 @@
 # GATIE — Avancement
 
-## Session 6 — 2026-03-15
+## Décision architecture — RBAC (2026-03-16)
+
+### Modèle d'accès retenu : Scoped RBAC à 3 niveaux
+
+**Contexte :** un père déploie GATIE, veut que sa femme gère les PINs/plannings, et que son enfant puisse juste ouvrir. Avec seulement ADMIN/MEMBER, la femme devrait être ADMIN — trop large. D'où le rôle intermédiaire.
+
+```
+ADMIN (global)
+  → tout : config serveur, gestion membres, portails, tokens MQTT, permissions
+
+MANAGER (par portail)
+  → ouvrir / fermer / voir le statut
+  → créer/révoquer des PINs et codes d'accès
+  → gérer les plannings horaires du portail
+  → gérer qui a accès au portail (inviter/retirer des MEMBER)
+
+MEMBER (par portail)
+  → ouvrir / fermer / voir le statut uniquement
+```
+
+**Matrice hardcodée en code** (pas de `role_permissions` en BDD) — suffisant pour ce cas self-hosted.
+
+### Impact sur le schéma BDD
+
+La migration `004_create_permissions.sql` actuelle utilise des flags booléens (`can_open`, `can_close`, `can_view_status`, `can_manage`). **Elle doit être remplacée** par une colonne `role` enum.
+
+La prochaine migration doit :
+```sql
+-- Remplacer la table permissions par :
+CREATE TABLE gate_memberships (
+    id         UUID PRIMARY KEY DEFAULT uuidv7(),
+    member_id  UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+    gate_id    UUID NOT NULL REFERENCES gates(id) ON DELETE CASCADE,
+    role       TEXT NOT NULL CHECK (role IN ('manager', 'member')),
+    granted_by UUID REFERENCES members(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (member_id, gate_id)
+);
+```
+
+> Note : les ADMIN n'ont pas d'entrée dans `gate_memberships` — leur accès est global, vérifié côté code.
+
+### Logique d'autorisation (`can()`)
+
+```go
+func can(user, action, gate) bool {
+    if user.Role == "ADMIN" { return true }
+
+    membership := getMembership(user.ID, gate.ID)
+    if membership == nil { return false }
+
+    switch action {
+    case "open", "close", "view_status":
+        return true // manager et member
+    case "manage_access", "manage_pins", "manage_schedules":
+        return membership.Role == "manager"
+    }
+    return false
+}
+```
+
+---
+
+## Session 6 — 2026-03-16
+
+### Ce qui a été fait
+- **CRUD portails — backend** :
+  - `service/gate.go` : `GateService` (List, Get, Create, Update, Delete, RegenerateToken)
+  - `handler/gate.go` : 6 routes Huma (`GET/POST /api/gates`, `GET/PATCH/DELETE /api/gates/{id}`, `POST /api/gates/{id}/token`)
+  - `main.go` : wiring `GateService` + `GateHandler`
+- **CRUD portails — frontend** :
+  - `lib/types.ts` : types `Gate`, `GateWithToken`, `GatesPage`
+  - `pages/gates.tsx` : liste paginée + modale create/edit + suppression + panel "token reveal" + confirmation regénération
+  - `router.tsx` : route `/gates`
+  - `app-header.tsx` : lien nav "Portails" (HomeModernIcon)
+  - `components/ui/field.tsx` : prop `hint` ajoutée
+  - i18n FR + EN mis à jour (portails, nav, actions)
+
+### Décisions techniques prises
+- Token de portail : 32 octets aléatoires (`crypto/rand`) → hex (64 chars) → hashé SHA-256 en BDD
+- Le token brut n'est retourné qu'une seule fois (création ou regénération) avec une alerte "sauvegardez-le"
+- Regénération : confirmation modale + invalidation immédiate de l'ancien token
+- Copie du token : bouton clipboard avec feedback visuel (icône check verte 2s)
+
+### Prochain bloc prévu
+- **Permissions (gate_memberships)** :
+  - Nouvelle migration remplaçant `permissions` par `gate_memberships` avec colonne `role`
+  - Queries sqlc mises à jour
+  - `service/permission.go` : logique `can()` centralisée + CRUD des accès par portail
+  - `handler/permission.go` : routes pour gérer les accès d'un portail
+  - Frontend : onglet/section "Accès" dans la page portail
+
+### Ce qui reste à faire (grandes étapes)
+1. ~~Init projet + Docker Compose + health check~~
+2. ~~Schéma BDD + migrations (members, gates, permissions, schedules)~~
+3. ~~Auth (inscription initiale, login/JWT, refresh tokens)~~
+4. ~~Frontend auth (setup, login, dashboard protégé)~~
+5. ~~CRUD membres (backend + frontend)~~
+6. ~~CRUD portails + gate tokens~~
+7. **Permissions (gate_memberships, scoped RBAC 3 niveaux)** ← prochain
+8. Plannings horaires
+9. Client MQTT + modes d'auth
+10. Actions sur portails (open/close) via MQTT/HTTP
+11. Statut temps réel (SSE)
+12. Codes PIN / mots de passe d'accès
+13. API tokens
+14. SSO (OIDC)
+15. Audit log
+
+---
+
+## Résumé PR — Sessions 5 et 6
+
+### Session 5 — CRUD membres (backend + frontend)
+
+**Backend**
+- `middleware/admin.go` — middleware `RequireAdmin` (vérifie le rôle depuis le JWT, 403 si non-admin)
+- `middleware/auth.go` — ajout `GetClaimsFromContext()` pour accéder aux claims JWT dans les handlers
+- `repository/members_role.sql.go` — `CountMembersByRole` (fichier manuel, équivalent sqlc)
+- `service/member.go` — `MemberService` avec guards métier :
+  - Impossible de supprimer le dernier admin
+  - Impossible de se supprimer soi-même
+  - Unicité du username (détection erreur pgconn 23505 → `ErrUsernameExists`)
+- `handler/member.go` — 5 routes sous `/api/members` (list, create, get, update, delete), toutes admin-only
+
+**Frontend**
+- `lib/types.ts` — interfaces `Member`, `MembersPage`
+- `components/ui/select.tsx` — composant Select stylé (wrapping natif)
+- `pages/members.tsx` — liste paginée + modale create/edit + confirmation de suppression inline
+- Route `/members`, lien nav "Membres" dans AppHeader
+
+---
+
+### Session 6 — CRUD portails + gate tokens
+
+**Backend**
+- `service/gate.go` — `GateService` avec génération de token sécurisée :
+  - `crypto/rand` → 32 octets → hex (64 chars) = token brut
+  - SHA-256 du token → stocké en BDD (`gate_token_hash`)
+  - Token brut retourné **une seule fois** (à la création ou regénération), jamais en BDD
+- `handler/gate.go` — 6 routes sous `/api/gates` :
+  - `GET /api/gates` — liste paginée
+  - `POST /api/gates` — création → 201 + `{gate, token}`
+  - `GET /api/gates/{id}` — détail
+  - `PATCH /api/gates/{id}` — mise à jour nom/TTL
+  - `DELETE /api/gates/{id}` — suppression → 204
+  - `POST /api/gates/{id}/token` — regénération token → `{gate, newToken}`
+
+**Frontend**
+- `lib/types.ts` — interfaces `Gate`, `GateWithToken`, `GatesPage`
+- `pages/gates.tsx` — page complète :
+  - Vue mobile (cards) + desktop (tableau)
+  - Modale create/edit (nom + TTL statut)
+  - **Panel "token reveal"** après création/regénération : alerte ambrée + bouton copie avec feedback visuel
+  - Modale confirmation de regénération (action destructive)
+  - Modale confirmation de suppression
+- Route `/gates`, lien nav "Portails" dans AppHeader (icône HomeModernIcon)
+- `components/ui/field.tsx` — prop `hint` ajoutée pour afficher une aide sous le champ
+
+---
 
 ### Ce qui a été fait
 - **CRUD portails — backend** :
