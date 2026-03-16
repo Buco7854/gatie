@@ -3,6 +3,7 @@ import { SetupPage } from '@/pages/setup'
 import { LoginPage } from '@/pages/login'
 import { DashboardPage } from '@/pages/dashboard'
 import { MembersPage } from '@/pages/members'
+import { GatesPage } from '@/pages/gates'
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -32,7 +33,13 @@ const membersRoute = createRoute({
   component: MembersPage,
 })
 
-const routeTree = rootRoute.addChildren([setupRoute, loginRoute, dashboardRoute, membersRoute])
+const gatesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/gates',
+  component: GatesPage,
+})
+
+const routeTree = rootRoute.addChildren([setupRoute, loginRoute, dashboardRoute, membersRoute, gatesRoute])
 
 export const router = createRouter({ routeTree })
 

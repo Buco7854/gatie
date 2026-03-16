@@ -6,6 +6,7 @@
     "system": "System"
   },
   "nav": {
+    "gates": "Gates",
     "members": "Members",
     "logout": "Sign out"
   },
@@ -68,6 +69,28 @@
     "deleteTitle": "Delete member",
     "deleteConfirm": "Are you sure you want to delete {{username}}? This action cannot be undone.",
     "cannotEditOwnRole": "You cannot change your own role."
+  },
+  "gates": {
+    "title": "Gates",
+    "count": "{{count}} gate(s)",
+    "add": "Add",
+    "create": "Create gate",
+    "empty": "No gates",
+    "modalTitleCreate": "New gate",
+    "modalTitleEdit": "Edit gate",
+    "deleteTitle": "Delete gate",
+    "deleteConfirm": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
+    "tokenTitle": "Gate token",
+    "tokenWarning": "This token will not be shown again. Copy it now and store it securely.",
+    "tokenCopied": "Copied!",
+    "tokenCopy": "Copy",
+    "tokenRegenerate": "Regenerate token",
+    "tokenRegenerateConfirmTitle": "Regenerate token?",
+    "tokenRegenerateConfirmBody": "The current token will be immediately invalidated. The gate device will need to be reconfigured with the new token.",
+    "fieldName": "Gate name",
+    "fieldNamePlaceholder": "Main gate",
+    "fieldStatusTTL": "Status TTL (seconds)",
+    "fieldStatusTTLHint": "How long the last received status remains valid. After this delay, the gate is considered offline."
   },
   "pagination": {
     "page": "Page {{page}} of {{total}}"

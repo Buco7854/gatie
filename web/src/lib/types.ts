@@ -13,3 +13,22 @@ export interface MembersPage {
   page: number
   per_page: number
 }
+
+export interface Gate {
+  id: string
+  name: string
+  status_ttl_seconds: number
+  created_at: string
+  updated_at: string
+}
+
+export interface GateWithToken extends Gate {
+  token: string
+}
+
+export interface GatesPage {
+  items: Gate[]
+  total: number
+  page: number
+  per_page: number
+}
