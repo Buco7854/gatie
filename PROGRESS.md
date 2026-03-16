@@ -1,5 +1,48 @@
 # GATIE — Avancement
 
+## Session 6 — 2026-03-15
+
+### Ce qui a été fait
+- **CRUD portails — backend** :
+  - `service/gate.go` : `GateService` (List, Get, Create, Update, Delete, RegenerateToken)
+  - `handler/gate.go` : 6 routes Huma (`GET/POST /api/gates`, `GET/PATCH/DELETE /api/gates/{id}`, `POST /api/gates/{id}/token`)
+  - `main.go` : wiring `GateService` + `GateHandler`
+- **CRUD portails — frontend** :
+  - `lib/types.ts` : types `Gate`, `GateWithToken`, `GatesPage`
+  - `pages/gates.tsx` : liste paginée + modale create/edit + suppression + panel "token reveal" + confirmation regénération
+  - `router.tsx` : route `/gates`
+  - `app-header.tsx` : lien nav "Portails" (HomeModernIcon)
+  - `components/ui/field.tsx` : prop `hint` ajoutée
+  - i18n FR + EN mis à jour (portails, nav, actions)
+
+### Décisions techniques prises
+- Token de portail : 32 octets aléatoires (`crypto/rand`) → hex (64 chars) → hashé SHA-256 en BDD
+- Le token brut n'est retourné qu'une seule fois (création ou regénération) avec une alerte "sauvegardez-le"
+- Regénération : confirmation modale + invalidation immédiate de l'ancien token
+- Copie du token : bouton clipboard avec feedback visuel (icône check verte 2s)
+
+### Prochain bloc prévu
+- **Permissions** : backend + frontend (qui peut ouvrir/fermer quel portail)
+
+### Ce qui reste à faire (grandes étapes)
+1. ~~Init projet + Docker Compose + health check~~
+2. ~~Schéma BDD + migrations (members, gates, permissions, schedules)~~
+3. ~~Auth (inscription initiale, login/JWT, refresh tokens)~~
+4. ~~Frontend auth (setup, login, dashboard protégé)~~
+5. ~~CRUD membres (backend + frontend)~~
+6. ~~CRUD portails + gate tokens~~
+7. Permissions + plannings horaires
+8. Client MQTT + modes d'auth
+9. Actions sur portails (open/close) via MQTT/HTTP
+10. Statut temps réel (SSE)
+11. Codes PIN / mots de passe d'accès
+12. Domaines personnalisés
+13. API tokens
+14. SSO (OIDC)
+15. Audit log
+
+---
+
 ## Session 5 — 2026-03-14
 
 ### Ce qui a été fait
