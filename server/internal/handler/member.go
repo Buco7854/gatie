@@ -201,7 +201,10 @@ func (h *MemberHandler) createMember(ctx context.Context, input *CreateMemberBod
 func (h *MemberHandler) getMember(ctx context.Context, input *GetMemberInput) (*MemberOutput, error) {
 	member, err := h.memberService.GetMember(ctx, input.MemberID)
 	if err != nil {
-		if errors.Is(err, service.ErrMemberNotFound) {
+		switch {
+		case errors.Is(err, service.ErrInvalidID):
+			return nil, huma.Error400BadRequest("invalid member id format")
+		case errors.Is(err, service.ErrMemberNotFound):
 			return nil, huma.Error404NotFound("member not found")
 		}
 		return nil, huma.Error500InternalServerError("failed to get member", err)
@@ -229,6 +232,8 @@ func (h *MemberHandler) updateMember(ctx context.Context, input *UpdateMemberInp
 	})
 	if err != nil {
 		switch {
+		case errors.Is(err, service.ErrInvalidID):
+			return nil, huma.Error400BadRequest("invalid member id format")
 		case errors.Is(err, service.ErrMemberNotFound):
 			return nil, huma.Error404NotFound("member not found")
 		case errors.Is(err, service.ErrSelfRoleChange):
@@ -255,6 +260,8 @@ func (h *MemberHandler) deleteMember(ctx context.Context, input *DeleteMemberInp
 	err := h.memberService.DeleteMember(ctx, input.MemberID, claims.MemberID)
 	if err != nil {
 		switch {
+		case errors.Is(err, service.ErrInvalidID):
+			return nil, huma.Error400BadRequest("invalid member id format")
 		case errors.Is(err, service.ErrMemberNotFound):
 			return nil, huma.Error404NotFound("member not found")
 		case errors.Is(err, service.ErrSelfDelete):

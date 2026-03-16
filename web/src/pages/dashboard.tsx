@@ -1,5 +1,3 @@
-import { useEffect } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { LockClosedIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '@/hooks/use-auth'
@@ -8,24 +6,7 @@ import { clsx } from 'clsx'
 
 export function DashboardPage() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
-  const { status, user } = useAuth()
-
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      navigate({ to: '/login' })
-    }
-  }, [status, navigate])
-
-  if (status === 'loading') {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-100 dark:bg-zinc-900">
-        <div className="size-7 animate-spin rounded-full border-2 border-zinc-300 border-t-indigo-600 dark:border-zinc-700 dark:border-t-indigo-400" />
-      </div>
-    )
-  }
-
-  if (status === 'unauthenticated') return null
+  const { user } = useAuth()
 
   const initials = user.username?.charAt(0).toUpperCase() ?? '?'
   const isAdmin = user.role === 'ADMIN'

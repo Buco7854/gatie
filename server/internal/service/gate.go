@@ -68,7 +68,7 @@ func (s *GateService) ListGates(ctx context.Context, page, perPage int) (*GatePa
 func (s *GateService) GetGate(ctx context.Context, id string) (*Gate, error) {
 	uid, err := convert.ParseUUID(id)
 	if err != nil {
-		return nil, ErrGateNotFound
+		return nil, ErrInvalidID
 	}
 
 	row, err := s.queries.GetGateByID(ctx, uid)
@@ -109,7 +109,7 @@ func (s *GateService) CreateGate(ctx context.Context, input CreateGateInput) (*G
 func (s *GateService) UpdateGate(ctx context.Context, id string, input UpdateGateInput) (*Gate, error) {
 	uid, err := convert.ParseUUID(id)
 	if err != nil {
-		return nil, ErrGateNotFound
+		return nil, ErrInvalidID
 	}
 
 	ttl := input.StatusTTLSeconds
@@ -136,7 +136,7 @@ func (s *GateService) UpdateGate(ctx context.Context, id string, input UpdateGat
 func (s *GateService) DeleteGate(ctx context.Context, id string) error {
 	uid, err := convert.ParseUUID(id)
 	if err != nil {
-		return ErrGateNotFound
+		return ErrInvalidID
 	}
 
 	_, err = s.queries.GetGateByID(ctx, uid)
@@ -153,7 +153,7 @@ func (s *GateService) DeleteGate(ctx context.Context, id string) error {
 func (s *GateService) RegenerateToken(ctx context.Context, id string) (*GateWithToken, error) {
 	uid, err := convert.ParseUUID(id)
 	if err != nil {
-		return nil, ErrGateNotFound
+		return nil, ErrInvalidID
 	}
 
 	_, err = s.queries.GetGateByID(ctx, uid)

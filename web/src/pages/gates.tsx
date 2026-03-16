@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -10,8 +9,6 @@ import {
   PencilSquareIcon,
   TrashIcon,
   XMarkIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   ArrowPathIcon,
   ClipboardDocumentIcon,
   CheckIcon,
@@ -24,6 +21,8 @@ import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/ui/field'
+import { Spinner } from '@/components/ui/spinner'
+import { Pagination } from '@/components/ui/pagination'
 
 // --- Schemas ---
 
@@ -41,10 +40,15 @@ function TokenReveal({ token, onClose }: { token: string; onClose: () => void })
   const [copied, setCopied] = useState(false)
 
   function copy() {
-    navigator.clipboard.writeText(token).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
+    navigator.clipboard.writeText(token).then(
+      () => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      },
+      () => {
+        // Clipboard API not available (e.g. non-HTTPS)
+      },
+    )
   }
 
   return (
@@ -154,23 +158,16 @@ const PER_PAGE = 20
 
 export function GatesPage() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
-  const { status, user } = useAuth()
+  useAuth()
   const queryClient = useQueryClient()
 
   const [page, setPage] = useState(1)
   const [modal, setModal] = useState<ModalState>(null)
   const [gateToDelete, setGateToDelete] = useState<Gate | null>(null)
 
-  useEffect(() => {
-    if (status === 'unauthenticated') navigate({ to: '/login' })
-    else if (status === 'authenticated' && user.role !== 'ADMIN') navigate({ to: '/' })
-  }, [status, user.role, navigate])
-
   const { data, isLoading } = useQuery({
     queryKey: ['gates', page],
     queryFn: () => apiFetch<GatesPage>(`/gates?page=${page}&per_page=${PER_PAGE}`),
-    enabled: status === 'authenticated' && user.role === 'ADMIN',
   })
 
   const createMutation = useMutation({
@@ -210,14 +207,6 @@ export function GatesPage() {
 
   const totalPages = data ? Math.ceil(data.total / PER_PAGE) : 1
 
-  if (status === 'loading' || status === 'unauthenticated') {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-100 dark:bg-zinc-900">
-        <div className="size-7 animate-spin rounded-full border-2 border-zinc-300 border-t-indigo-600 dark:border-zinc-700 dark:border-t-indigo-400" />
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-zinc-100 dark:bg-zinc-900">
       <AppHeader />
@@ -243,7 +232,7 @@ export function GatesPage() {
         <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-700/60 dark:bg-zinc-800">
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
-              <div className="size-6 animate-spin rounded-full border-2 border-zinc-300 border-t-indigo-600 dark:border-zinc-700 dark:border-t-indigo-400" />
+              <Spinner className="size-6" />
             </div>
           ) : data?.items.length === 0 ? (
             <div className="py-16 text-center">
@@ -302,21 +291,7 @@ export function GatesPage() {
             </>
           )}
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3 dark:border-zinc-700">
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                {t('pagination.page', { page, total: totalPages })}
-              </p>
-              <div className="flex gap-1">
-                <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                  <ChevronLeftIcon className="size-4" aria-hidden="true" />
-                </Button>
-                <Button variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                  <ChevronRightIcon className="size-4" aria-hidden="true" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       </main>
 

@@ -209,10 +209,7 @@ func (h *GateHandler) createGate(ctx context.Context, input *CreateGateBodyInput
 func (h *GateHandler) getGate(ctx context.Context, input *GetGateInput) (*GateOutput, error) {
 	gate, err := h.gateService.GetGate(ctx, input.GateID)
 	if err != nil {
-		if errors.Is(err, service.ErrGateNotFound) {
-			return nil, huma.Error404NotFound("gate not found")
-		}
-		return nil, huma.Error500InternalServerError("failed to get gate", err)
+		return nil, mapGateError(err, "failed to get gate")
 	}
 
 	return &GateOutput{Body: toGateBody(*gate)}, nil
@@ -224,10 +221,7 @@ func (h *GateHandler) updateGate(ctx context.Context, input *UpdateGateInput) (*
 		StatusTTLSeconds: input.Body.StatusTTLSeconds,
 	})
 	if err != nil {
-		if errors.Is(err, service.ErrGateNotFound) {
-			return nil, huma.Error404NotFound("gate not found")
-		}
-		return nil, huma.Error500InternalServerError("failed to update gate", err)
+		return nil, mapGateError(err, "failed to update gate")
 	}
 
 	return &GateOutput{Body: toGateBody(*gate)}, nil
@@ -235,10 +229,7 @@ func (h *GateHandler) updateGate(ctx context.Context, input *UpdateGateInput) (*
 
 func (h *GateHandler) deleteGate(ctx context.Context, input *DeleteGateInput) (*struct{}, error) {
 	if err := h.gateService.DeleteGate(ctx, input.GateID); err != nil {
-		if errors.Is(err, service.ErrGateNotFound) {
-			return nil, huma.Error404NotFound("gate not found")
-		}
-		return nil, huma.Error500InternalServerError("failed to delete gate", err)
+		return nil, mapGateError(err, "failed to delete gate")
 	}
 
 	return nil, nil
@@ -247,10 +238,7 @@ func (h *GateHandler) deleteGate(ctx context.Context, input *DeleteGateInput) (*
 func (h *GateHandler) regenerateToken(ctx context.Context, input *RegenerateTokenInput) (*GateWithTokenOutput, error) {
 	result, err := h.gateService.RegenerateToken(ctx, input.GateID)
 	if err != nil {
-		if errors.Is(err, service.ErrGateNotFound) {
-			return nil, huma.Error404NotFound("gate not found")
-		}
-		return nil, huma.Error500InternalServerError("failed to regenerate token", err)
+		return nil, mapGateError(err, "failed to regenerate token")
 	}
 
 	return &GateWithTokenOutput{Body: GateWithTokenBody{
@@ -260,6 +248,17 @@ func (h *GateHandler) regenerateToken(ctx context.Context, input *RegenerateToke
 }
 
 // --- Helpers ---
+
+func mapGateError(err error, fallback string) error {
+	switch {
+	case errors.Is(err, service.ErrInvalidID):
+		return huma.Error400BadRequest("invalid gate id format")
+	case errors.Is(err, service.ErrGateNotFound):
+		return huma.Error404NotFound("gate not found")
+	default:
+		return huma.Error500InternalServerError(fallback, err)
+	}
+}
 
 func toGateBody(g service.Gate) GateBody {
 	return GateBody{

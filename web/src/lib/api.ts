@@ -8,6 +8,37 @@ export interface AuthTokens {
   username: string
 }
 
+export interface ApiErrorDetail {
+  location?: string
+  message?: string
+  value?: unknown
+}
+
+interface ApiErrorBody {
+  status?: number
+  detail?: string
+  errors?: ApiErrorDetail[]
+}
+
+export class ApiError extends Error {
+  status: number
+  detail: string
+  errors: ApiErrorDetail[]
+
+  constructor(status: number, body: ApiErrorBody | null) {
+    const detail = body?.detail ?? `HTTP ${status}`
+    super(detail)
+    this.name = 'ApiError'
+    this.status = status
+    this.detail = detail
+    this.errors = body?.errors ?? []
+  }
+
+  hasFieldError(location: string): boolean {
+    return this.errors.some((e) => e.location === location)
+  }
+}
+
 let refreshPromise: Promise<boolean> | null = null
 
 async function refreshTokens(): Promise<boolean> {
@@ -33,6 +64,11 @@ async function refreshTokens(): Promise<boolean> {
   return refreshPromise
 }
 
+async function throwApiError(res: Response): never {
+  const body = (await res.json().catch(() => null)) as ApiErrorBody | null
+  throw new ApiError(res.status, body)
+}
+
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getAccessToken()
   const headers = new Headers(options.headers as HeadersInit | undefined)
@@ -47,22 +83,16 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
       const newToken = getAccessToken()
       if (newToken) headers.set('Authorization', `Bearer ${newToken}`)
       const retry = await fetch(`/api${path}`, { ...options, credentials: 'include', headers })
-      if (!retry.ok) {
-        const body = await retry.json().catch(() => null) as { detail?: string } | null
-        throw new Error(body?.detail ?? retry.statusText)
-      }
+      if (!retry.ok) await throwApiError(retry)
       if (retry.status === 204) return undefined as T
       return retry.json() as Promise<T>
     }
     clearAuth()
     window.location.href = '/login'
-    throw new Error('Unauthorized')
+    throw new ApiError(401, null)
   }
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => null) as { detail?: string } | null
-    throw new Error(body?.detail ?? res.statusText)
-  }
+  if (!res.ok) await throwApiError(res)
 
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>

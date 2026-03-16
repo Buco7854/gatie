@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gatie-io/gatie-server/internal/auth"
 	"github.com/gatie-io/gatie-server/internal/convert"
@@ -23,10 +24,11 @@ var (
 
 type MemberService struct {
 	queries *postgres.Queries
+	pool    *pgxpool.Pool
 }
 
-func NewMemberService(queries *postgres.Queries) *MemberService {
-	return &MemberService{queries: queries}
+func NewMemberService(queries *postgres.Queries, pool *pgxpool.Pool) *MemberService {
+	return &MemberService{queries: queries, pool: pool}
 }
 
 type MemberPage struct {
@@ -73,7 +75,7 @@ func (s *MemberService) ListMembers(ctx context.Context, page, perPage int) (*Me
 func (s *MemberService) GetMember(ctx context.Context, id string) (*Member, error) {
 	uid, err := convert.ParseUUID(id)
 	if err != nil {
-		return nil, ErrMemberNotFound
+		return nil, ErrInvalidID
 	}
 
 	row, err := s.queries.GetMemberByID(ctx, uid)
@@ -119,7 +121,7 @@ func (s *MemberService) CreateMember(ctx context.Context, input CreateMemberInpu
 func (s *MemberService) UpdateMember(ctx context.Context, id string, input UpdateMemberInput) (*Member, error) {
 	uid, err := convert.ParseUUID(id)
 	if err != nil {
-		return nil, ErrMemberNotFound
+		return nil, ErrInvalidID
 	}
 
 	if input.CallerID == id {
@@ -163,10 +165,22 @@ func (s *MemberService) UpdateMember(ctx context.Context, id string, input Updat
 func (s *MemberService) DeleteMember(ctx context.Context, id string, callerID string) error {
 	uid, err := convert.ParseUUID(id)
 	if err != nil {
-		return ErrMemberNotFound
+		return ErrInvalidID
 	}
 
-	row, err := s.queries.GetMemberByID(ctx, uid)
+	if id == callerID {
+		return ErrSelfDelete
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.queries.WithTx(tx)
+
+	row, err := qtx.GetMemberByID(ctx, uid)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrMemberNotFound
@@ -174,13 +188,8 @@ func (s *MemberService) DeleteMember(ctx context.Context, id string, callerID st
 		return fmt.Errorf("getting member: %w", err)
 	}
 
-	memberID := convert.UUIDToString(row.ID)
-	if memberID == callerID {
-		return ErrSelfDelete
-	}
-
 	if row.Role == "ADMIN" {
-		adminCount, err := s.queries.CountMembersByRole(ctx, "ADMIN")
+		adminCount, err := qtx.CountMembersByRoleForUpdate(ctx, "ADMIN")
 		if err != nil {
 			return fmt.Errorf("counting admins: %w", err)
 		}
@@ -189,7 +198,11 @@ func (s *MemberService) DeleteMember(ctx context.Context, id string, callerID st
 		}
 	}
 
-	return s.queries.DeleteMember(ctx, uid)
+	if err := qtx.DeleteMember(ctx, uid); err != nil {
+		return fmt.Errorf("deleting member: %w", err)
+	}
+
+	return tx.Commit(ctx)
 }
 
 func toMember(r postgres.Member) Member {

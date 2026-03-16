@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -10,18 +9,18 @@ import {
   PencilSquareIcon,
   TrashIcon,
   XMarkIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
 } from '@heroicons/react/24/outline'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/use-auth'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, ApiError } from '@/lib/api'
 import type { Member, MembersPage } from '@/lib/types'
 import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/ui/field'
 import { ListboxSelect } from '@/components/ui/listbox-select'
+import { Spinner } from '@/components/ui/spinner'
+import { Pagination } from '@/components/ui/pagination'
 import { clsx } from 'clsx'
 
 // --- Schemas ---
@@ -129,7 +128,7 @@ function CreateForm({ onSuccess }: { onSuccess: () => void }) {
       onSuccess()
     },
     onError: (err: Error) => {
-      if (err.message.includes('username already taken')) {
+      if (err instanceof ApiError && err.hasFieldError('body.username')) {
         setError('username', { message: t('validation.usernameTaken') })
       }
     },
@@ -225,7 +224,7 @@ function EditForm({ member, isSelf, onSuccess }: { member: Member; isSelf: boole
       onSuccess()
     },
     onError: (err: Error) => {
-      if (err.message.includes('username already taken')) {
+      if (err instanceof ApiError && err.hasFieldError('body.username')) {
         setError('username', { message: t('validation.usernameTaken') })
       }
     },
@@ -295,23 +294,16 @@ const PER_PAGE = 20
 
 export function MembersPage() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
-  const { status, user } = useAuth()
+  const { user } = useAuth()
   const queryClient = useQueryClient()
 
   const [page, setPage] = useState(1)
   const [modal, setModal] = useState<ModalState>(null)
   const [memberToDelete, setMemberToDelete] = useState<Member | null>(null)
 
-  useEffect(() => {
-    if (status === 'unauthenticated') navigate({ to: '/login' })
-    else if (status === 'authenticated' && user.role !== 'ADMIN') navigate({ to: '/' })
-  }, [status, user.role, navigate])
-
   const { data, isLoading } = useQuery({
     queryKey: ['members', page],
     queryFn: () => apiFetch<MembersPage>(`/members?page=${page}&per_page=${PER_PAGE}`),
-    enabled: status === 'authenticated' && user.role === 'ADMIN',
   })
 
   const deleteMutation = useMutation({
@@ -326,14 +318,6 @@ export function MembersPage() {
 
   const currentUserId = user.memberId
   const actionProps = { setModal, setMemberToDelete }
-
-  if (status === 'loading' || status === 'unauthenticated') {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-100 dark:bg-zinc-900">
-        <div className="size-7 animate-spin rounded-full border-2 border-zinc-300 border-t-indigo-600 dark:border-zinc-700 dark:border-t-indigo-400" />
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-zinc-100 dark:bg-zinc-900">
@@ -360,7 +344,7 @@ export function MembersPage() {
         <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-700/60 dark:bg-zinc-800">
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
-              <div className="size-6 animate-spin rounded-full border-2 border-zinc-300 border-t-indigo-600 dark:border-zinc-700 dark:border-t-indigo-400" />
+              <Spinner className="size-6" />
             </div>
           ) : data?.items.length === 0 ? (
             <div className="py-16 text-center">
@@ -434,31 +418,7 @@ export function MembersPage() {
             </>
           )}
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3 dark:border-zinc-700">
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                {t('pagination.page', { page, total: totalPages })}
-              </p>
-              <div className="flex gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  <ChevronLeftIcon className="size-4" aria-hidden="true" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  <ChevronRightIcon className="size-4" aria-hidden="true" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       </main>
 

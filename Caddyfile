@@ -1,0 +1,15 @@
+# Development Caddyfile — adjust the site address for production.
+# In production, replace :80 with your domain (e.g. gatie.example.com)
+# and Caddy will auto-provision TLS via Let's Encrypt.
+
+:80 {
+	# API requests → Go backend
+	handle /api/* {
+		reverse_proxy localhost:8888
+	}
+
+	# Everything else → Vite dev server (or built SPA in production)
+	handle {
+		reverse_proxy localhost:5173
+	}
+}

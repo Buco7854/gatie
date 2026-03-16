@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/ui/field'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { Spinner } from '@/components/ui/spinner'
 
 const schema = z
   .object({
@@ -29,7 +30,7 @@ export function SetupPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
 
-  const { data: setupStatus } = useQuery({
+  const { data: setupStatus, isError, isLoading } = useQuery({
     queryKey: ['setup-status'],
     queryFn: () => apiFetch<{ needs_setup: boolean }>('/setup/status'),
   })
@@ -61,6 +62,22 @@ export function SetupPage() {
   const onSubmit = handleSubmit(({ username, password }) => {
     mutation.mutate({ username, password })
   })
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-100 dark:bg-zinc-900">
+        <Spinner />
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-100 dark:bg-zinc-900">
+        <p className="text-sm text-red-600 dark:text-red-400">{t('error.generic')}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-100 dark:bg-zinc-900">

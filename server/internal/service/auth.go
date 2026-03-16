@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gatie-io/gatie-server/internal/auth"
+	"github.com/gatie-io/gatie-server/internal/repository"
 	"github.com/gatie-io/gatie-server/internal/repository/postgres"
 )
 
@@ -96,16 +97,6 @@ func (s *AuthService) Login(ctx context.Context, input LoginInput) (*AuthResult,
 func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*AuthResult, error) {
 	tokenHash := auth.HashToken(rawToken)
 
-	rt, err := s.queries.GetRefreshTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return nil, ErrInvalidRefreshToken
-	}
-
-	if rt.ExpiresAt.Time.Before(time.Now()) {
-		s.queries.DeleteRefreshToken(ctx, rt.ID)
-		return nil, ErrRefreshTokenExpired
-	}
-
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("beginning transaction: %w", err)
@@ -114,8 +105,18 @@ func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*AuthResult
 
 	qtx := s.queries.WithTx(tx)
 
+	rt, err := qtx.GetRefreshTokenByHash(ctx, tokenHash)
+	if err != nil {
+		return nil, ErrInvalidRefreshToken
+	}
+
 	if err := qtx.DeleteRefreshToken(ctx, rt.ID); err != nil {
 		return nil, fmt.Errorf("revoking old token: %w", err)
+	}
+
+	if rt.ExpiresAt.Time.Before(time.Now()) {
+		tx.Commit(ctx)
+		return nil, ErrRefreshTokenExpired
 	}
 
 	row, err := qtx.GetMemberByID(ctx, rt.MemberID)
@@ -162,7 +163,10 @@ func (s *AuthService) Logout(ctx context.Context, rawToken string) error {
 
 	rt, err := s.queries.GetRefreshTokenByHash(ctx, tokenHash)
 	if err != nil {
-		return nil
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("looking up refresh token: %w", err)
 	}
 
 	return s.queries.DeleteRefreshToken(ctx, rt.ID)

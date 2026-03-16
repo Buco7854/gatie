@@ -20,6 +20,13 @@ func (q *Queries) CountMembersByRole(ctx context.Context, role string) (int64, e
 	return count, MapError(err)
 }
 
+func (q *Queries) CountMembersByRoleForUpdate(ctx context.Context, role string) (int64, error) {
+	row := q.db.QueryRow(ctx, `SELECT count(*) FROM members WHERE role = $1 FOR UPDATE`, role)
+	var count int64
+	err := row.Scan(&count)
+	return count, MapError(err)
+}
+
 type CreateMemberParams struct {
 	Username     string
 	DisplayName  pgtype.Text

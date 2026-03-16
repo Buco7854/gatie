@@ -72,11 +72,12 @@ func main() {
 
 		authMW := middleware.NewAuthMiddleware(api, jwtManager)
 		adminMW := middleware.NewRequireAdmin(api)
+		authRateLimitMW := middleware.NewRateLimit(api, 0.5, 5)
 
 		authService := service.NewAuthService(queries, dbpool, jwtManager)
-		authHandler := handler.NewAuthHandler(authService)
+		authHandler := handler.NewAuthHandler(authService, authRateLimitMW)
 
-		memberService := service.NewMemberService(queries)
+		memberService := service.NewMemberService(queries, dbpool)
 		memberHandler := handler.NewMemberHandler(memberService, authMW, adminMW)
 
 		gateService := service.NewGateService(queries)

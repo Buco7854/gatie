@@ -1,6 +1,11 @@
 package service
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var ErrInvalidID = errors.New("invalid id format")
 
 type Member struct {
 	ID          string

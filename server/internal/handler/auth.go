@@ -21,10 +21,11 @@ type AuthServicer interface {
 
 type AuthHandler struct {
 	authService AuthServicer
+	rateLimitMW func(huma.Context, func(huma.Context))
 }
 
-func NewAuthHandler(authService AuthServicer) *AuthHandler {
-	return &AuthHandler{authService: authService}
+func NewAuthHandler(authService AuthServicer, rateLimitMW func(huma.Context, func(huma.Context))) *AuthHandler {
+	return &AuthHandler{authService: authService, rateLimitMW: rateLimitMW}
 }
 
 // --- Setup ---
@@ -58,6 +59,8 @@ type SetupStatusOutput struct {
 }
 
 func (h *AuthHandler) Register(api huma.API) {
+	rl := huma.Middlewares{h.rateLimitMW}
+
 	huma.Register(api, huma.Operation{
 		OperationID: "setup-status",
 		Method:      http.MethodGet,
@@ -75,6 +78,7 @@ func (h *AuthHandler) Register(api huma.API) {
 		Description:   "Create the first admin account. Only available when no members exist.",
 		Tags:          []string{"Auth"},
 		DefaultStatus: http.StatusCreated,
+		Middlewares:   rl,
 	}, h.setup)
 
 	huma.Register(api, huma.Operation{
@@ -84,6 +88,7 @@ func (h *AuthHandler) Register(api huma.API) {
 		Summary:     "Login",
 		Description: "Authenticate with username and password.",
 		Tags:        []string{"Auth"},
+		Middlewares: rl,
 	}, h.login)
 
 	huma.Register(api, huma.Operation{
@@ -93,6 +98,7 @@ func (h *AuthHandler) Register(api huma.API) {
 		Summary:     "Refresh tokens",
 		Description: "Get a new access token using a refresh token.",
 		Tags:        []string{"Auth"},
+		Middlewares: rl,
 	}, h.refresh)
 
 	huma.Register(api, huma.Operation{
