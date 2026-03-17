@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/gatie-io/gatie-server/internal/middleware"
+	"github.com/gatie-io/gatie-server/internal/model"
 	"github.com/gatie-io/gatie-server/internal/service"
 )
 
@@ -73,9 +74,9 @@ type CreateMemberBodyInput struct {
 type UpdateMemberInput struct {
 	MemberID string `path:"member-id" doc:"Member UUID"`
 	Body     struct {
-		Username    string  `json:"username" minLength:"3" maxLength:"100" doc:"Username"`
-		DisplayName *string `json:"display_name,omitempty" maxLength:"200" doc:"Display name"`
-		Role        string  `json:"role" enum:"ADMIN,MEMBER" doc:"Role"`
+		Username    *string                         `json:"username,omitempty" minLength:"3" maxLength:"100" doc:"Username"`
+		DisplayName model.OmittableNullable[string] `json:"display_name,omitempty" maxLength:"200" doc:"Display name"`
+		Role        *string                         `json:"role,omitempty" enum:"ADMIN,MEMBER" doc:"Role"`
 	}
 }
 
@@ -219,17 +220,21 @@ func (h *MemberHandler) updateMember(ctx context.Context, input *UpdateMemberInp
 		return nil, huma.Error401Unauthorized("unauthorized")
 	}
 
-	displayName := ""
-	if input.Body.DisplayName != nil {
-		displayName = *input.Body.DisplayName
+	svcInput := service.UpdateMemberInput{
+		Username: input.Body.Username,
+		Role:     input.Body.Role,
+		CallerID: claims.MemberID,
 	}
 
-	member, err := h.memberService.UpdateMember(ctx, input.MemberID, service.UpdateMemberInput{
-		Username:    input.Body.Username,
-		DisplayName: displayName,
-		Role:        input.Body.Role,
-		CallerID:    claims.MemberID,
-	})
+	if input.Body.DisplayName.Sent {
+		if input.Body.DisplayName.Null || input.Body.DisplayName.Value == "" {
+			svcInput.SetDisplayNameNull = true
+		} else {
+			svcInput.DisplayName = &input.Body.DisplayName.Value
+		}
+	}
+
+	member, err := h.memberService.UpdateMember(ctx, input.MemberID, svcInput)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidID):
@@ -242,7 +247,7 @@ func (h *MemberHandler) updateMember(ctx context.Context, input *UpdateMemberInp
 			return nil, huma.Error422UnprocessableEntity("username already taken", &huma.ErrorDetail{
 				Location: "body.username",
 				Message:  "username already taken",
-				Value:    input.Body.Username,
+				Value:    svcInput.Username,
 			})
 		}
 		return nil, huma.Error500InternalServerError("failed to update member", err)

@@ -43,10 +43,11 @@ type CreateMemberInput struct {
 }
 
 type UpdateMemberInput struct {
-	Username    string
-	DisplayName string
-	Role        string
-	CallerID    string
+	Username           *string
+	DisplayName        *string
+	SetDisplayNameNull bool
+	Role               *string
+	CallerID           string
 }
 
 func (s *MemberService) ListMembers(ctx context.Context, page, perPage int) (*MemberPage, error) {
@@ -123,7 +124,7 @@ func (s *MemberService) UpdateMember(ctx context.Context, id string, input Updat
 		return nil, ErrInvalidID
 	}
 
-	if input.CallerID == id {
+	if input.Role != nil && input.CallerID == id {
 		current, err := s.queries.GetMemberByID(ctx, uid)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
@@ -131,22 +132,26 @@ func (s *MemberService) UpdateMember(ctx context.Context, id string, input Updat
 			}
 			return nil, fmt.Errorf("getting member: %w", err)
 		}
-		if input.Role != current.Role {
+		if *input.Role != current.Role {
 			return nil, ErrSelfRoleChange
 		}
 	}
 
-	displayName := pgtype.Text{}
-	if input.DisplayName != "" {
-		displayName = pgtype.Text{String: input.DisplayName, Valid: true}
+	params := postgres.PatchMemberParams{ID: uid}
+
+	if input.Username != nil {
+		params.Username = input.Username
+	}
+	if input.SetDisplayNameNull {
+		params.SetDisplayNameNull = true
+	} else if input.DisplayName != nil {
+		params.DisplayName = input.DisplayName
+	}
+	if input.Role != nil {
+		params.Role = input.Role
 	}
 
-	row, err := s.queries.UpdateMember(ctx, postgres.UpdateMemberParams{
-		ID:          uid,
-		Username:    input.Username,
-		DisplayName: displayName,
-		Role:        input.Role,
-	})
+	row, err := s.queries.PatchMember(ctx, params)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrMemberNotFound

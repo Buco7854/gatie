@@ -22,7 +22,7 @@ type Querier interface {
 	GetMemberByID(ctx context.Context, id pgtype.UUID) (Member, error)
 	GetMemberByUsername(ctx context.Context, username string) (Member, error)
 	ListMembers(ctx context.Context, arg ListMembersParams) ([]Member, error)
-	UpdateMember(ctx context.Context, arg UpdateMemberParams) (Member, error)
+	PatchMember(ctx context.Context, arg PatchMemberParams) (Member, error)
 
 	// Gates
 	CountGates(ctx context.Context) (int64, error)
@@ -30,7 +30,7 @@ type Querier interface {
 	DeleteGate(ctx context.Context, id pgtype.UUID) error
 	GetGateByID(ctx context.Context, id pgtype.UUID) (Gate, error)
 	ListGates(ctx context.Context, arg ListGatesParams) ([]Gate, error)
-	UpdateGate(ctx context.Context, arg UpdateGateParams) (Gate, error)
+	PatchGate(ctx context.Context, arg PatchGateParams) (Gate, error)
 	UpdateGateToken(ctx context.Context, arg UpdateGateTokenParams) (Gate, error)
 
 	// Gate Actions

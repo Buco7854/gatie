@@ -91,18 +91,11 @@ func ExtractIP(ctx huma.Context, tp *TrustedProxies) string {
 }
 
 func stripPort(addr string) string {
-	if i := strings.LastIndexByte(addr, ':'); i != -1 {
-		if strings.Contains(addr, "]") {
-			if bracket := strings.LastIndexByte(addr, ']'); bracket < i {
-				return addr[:i]
-			}
-			return addr
-		}
-		if strings.IndexByte(addr, ':') == i {
-			return addr[:i]
-		}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
 	}
-	return addr
+	return host
 }
 
 // NewRateLimit returns a Huma middleware that rate-limits requests per IP

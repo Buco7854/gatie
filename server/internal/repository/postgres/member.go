@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -99,20 +101,48 @@ func (q *Queries) ListMembers(ctx context.Context, arg ListMembersParams) ([]Mem
 	return items, rows.Err()
 }
 
-type UpdateMemberParams struct {
-	ID          pgtype.UUID
-	Username    string
-	DisplayName pgtype.Text
-	Role        string
+type PatchMemberParams struct {
+	ID                 pgtype.UUID
+	Username           *string
+	DisplayName        *string
+	SetDisplayNameNull bool
+	Role               *string
 }
 
-func (q *Queries) UpdateMember(ctx context.Context, arg UpdateMemberParams) (Member, error) {
-	row := q.db.QueryRow(ctx,
-		`UPDATE members SET username = $2, display_name = $3, role = $4, updated_at = now()
-		WHERE id = $1
+func (q *Queries) PatchMember(ctx context.Context, arg PatchMemberParams) (Member, error) {
+	setClauses := []string{}
+	args := []any{arg.ID}
+	i := 2
+
+	if arg.Username != nil {
+		setClauses = append(setClauses, fmt.Sprintf("username = $%d", i))
+		args = append(args, *arg.Username)
+		i++
+	}
+	if arg.SetDisplayNameNull {
+		setClauses = append(setClauses, "display_name = NULL")
+	} else if arg.DisplayName != nil {
+		setClauses = append(setClauses, fmt.Sprintf("display_name = $%d", i))
+		args = append(args, *arg.DisplayName)
+		i++
+	}
+	if arg.Role != nil {
+		setClauses = append(setClauses, fmt.Sprintf("role = $%d", i))
+		args = append(args, *arg.Role)
+		i++
+	}
+
+	if len(setClauses) == 0 {
+		return q.GetMemberByID(ctx, arg.ID)
+	}
+
+	query := fmt.Sprintf(
+		`UPDATE members SET %s, updated_at = now() WHERE id = $1
 		RETURNING id, username, display_name, password_hash, role, created_at, updated_at`,
-		arg.ID, arg.Username, arg.DisplayName, arg.Role,
+		strings.Join(setClauses, ", "),
 	)
+
+	row := q.db.QueryRow(ctx, query, args...)
 	var m Member
 	err := row.Scan(&m.ID, &m.Username, &m.DisplayName, &m.PasswordHash, &m.Role, &m.CreatedAt, &m.UpdatedAt)
 	return m, MapError(err)

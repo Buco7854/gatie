@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -74,19 +76,39 @@ func (q *Queries) ListGates(ctx context.Context, arg ListGatesParams) ([]Gate, e
 	return items, rows.Err()
 }
 
-type UpdateGateParams struct {
+type PatchGateParams struct {
 	ID               pgtype.UUID
-	Name             string
-	StatusTtlSeconds int32
+	Name             *string
+	StatusTtlSeconds *int32
 }
 
-func (q *Queries) UpdateGate(ctx context.Context, arg UpdateGateParams) (Gate, error) {
-	row := q.db.QueryRow(ctx,
-		`UPDATE gates SET name = $2, status_ttl_seconds = $3, updated_at = now()
-		WHERE id = $1
+func (q *Queries) PatchGate(ctx context.Context, arg PatchGateParams) (Gate, error) {
+	setClauses := []string{}
+	args := []any{arg.ID}
+	i := 2
+
+	if arg.Name != nil {
+		setClauses = append(setClauses, fmt.Sprintf("name = $%d", i))
+		args = append(args, *arg.Name)
+		i++
+	}
+	if arg.StatusTtlSeconds != nil {
+		setClauses = append(setClauses, fmt.Sprintf("status_ttl_seconds = $%d", i))
+		args = append(args, *arg.StatusTtlSeconds)
+		i++
+	}
+
+	if len(setClauses) == 0 {
+		return q.GetGateByID(ctx, arg.ID)
+	}
+
+	query := fmt.Sprintf(
+		`UPDATE gates SET %s, updated_at = now() WHERE id = $1
 		RETURNING id, name, gate_token_hash, status_ttl_seconds, created_at, updated_at`,
-		arg.ID, arg.Name, arg.StatusTtlSeconds,
+		strings.Join(setClauses, ", "),
 	)
+
+	row := q.db.QueryRow(ctx, query, args...)
 	var g Gate
 	err := row.Scan(&g.ID, &g.Name, &g.GateTokenHash, &g.StatusTtlSeconds, &g.CreatedAt, &g.UpdatedAt)
 	return g, MapError(err)

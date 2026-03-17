@@ -35,8 +35,8 @@ type CreateGateInput struct {
 }
 
 type UpdateGateInput struct {
-	Name             string
-	StatusTTLSeconds int32
+	Name             *string
+	StatusTTLSeconds *int32
 }
 
 type GateWithToken struct {
@@ -113,16 +113,16 @@ func (s *GateService) UpdateGate(ctx context.Context, id string, input UpdateGat
 		return nil, ErrInvalidID
 	}
 
-	ttl := input.StatusTTLSeconds
-	if ttl <= 0 {
-		ttl = 60
+	params := postgres.PatchGateParams{ID: uid}
+
+	if input.Name != nil {
+		params.Name = input.Name
+	}
+	if input.StatusTTLSeconds != nil {
+		params.StatusTtlSeconds = input.StatusTTLSeconds
 	}
 
-	row, err := s.queries.UpdateGate(ctx, postgres.UpdateGateParams{
-		ID:               uid,
-		Name:             input.Name,
-		StatusTtlSeconds: ttl,
-	})
+	row, err := s.queries.PatchGate(ctx, params)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrGateNotFound

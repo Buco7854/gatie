@@ -150,6 +150,28 @@ type CreateGateInput struct {
 - Path : **toujours requis**.
 - `*string` = nullable + requis. `*string` + `omitempty` = nullable + optionnel.
 
+### PATCH partiel (2 patterns selon nullabilité DB)
+
+**Colonnes NOT NULL** (`name`, `username`, `role`, `status_ttl_seconds`…) :
+- Utiliser `*T` + `omitempty` (pattern Huma standard). nil = pas envoyé, non-nil = valeur.
+- Si le client envoie `null`, Huma le traite comme nil → champ ignoré (pas d'erreur, pas de mise à jour).
+
+**Colonnes nullable** (`display_name`…) — besoin de 3 états :
+- Utiliser `model.OmittableNullable[T]` (`internal/model/omittable.go`) qui distingue :
+  - **Non envoyé** (`Sent == false`) → ne pas toucher la colonne
+  - **Envoyé `null` ou `""`** (`Sent && (Null || Value == "")`) → SET colonne = NULL
+  - **Envoyé avec valeur** (`Sent && !Null`) → SET colonne = valeur
+
+```go
+// NOT NULL → *T + omitempty
+Name *string `json:"name,omitempty" minLength:"1" maxLength:"100"`
+
+// Nullable → OmittableNullable[T]
+DisplayName model.OmittableNullable[string] `json:"display_name,omitempty" maxLength:"200"`
+```
+
+Convention : `OmittableNullable` ne fuit pas au-delà du handler. Le service reçoit des `*T` + `SetXxxNull bool` (nil = pas envoyé). Le repository construit le SQL dynamiquement.
+
 ### Resolvers (validation custom)
 ```go
 func (m *MyInput) Resolve(ctx huma.Context) []error {

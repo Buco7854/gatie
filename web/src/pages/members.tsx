@@ -217,7 +217,13 @@ function EditForm({ member, isSelf, onSuccess }: { member: Member; isSelf: boole
 
   const mutation = useMutation({
     mutationFn: (data: UpdateFormData) =>
-      apiFetch<Member>(`/members/${member.id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+      apiFetch<Member>(`/members/${member.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ...data,
+          display_name: data.display_name || null,
+        }),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members'] })
       onSuccess()

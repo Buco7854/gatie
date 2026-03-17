@@ -75,8 +75,8 @@ type CreateGateBodyInput struct {
 type UpdateGateInput struct {
 	GateID string `path:"gate-id" doc:"Gate UUID"`
 	Body   struct {
-		Name             string `json:"name" minLength:"1" maxLength:"100" doc:"Gate name"`
-		StatusTTLSeconds int32  `json:"status_ttl_seconds,omitempty" minimum:"1" maximum:"86400" default:"60" doc:"Status TTL in seconds"`
+		Name             *string `json:"name,omitempty" minLength:"1" maxLength:"100" doc:"Gate name"`
+		StatusTTLSeconds *int32  `json:"status_ttl_seconds,omitempty" minimum:"1" maximum:"86400" doc:"Status TTL in seconds"`
 	}
 }
 
