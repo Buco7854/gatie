@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -15,8 +16,8 @@ import (
 )
 
 type AuthService struct {
-	queries *postgres.Queries
-	pool    *pgxpool.Pool
+	queries postgres.Querier
+	pool    interface{ Begin(context.Context) (pgx.Tx, error) }
 	jwt     *auth.JWTManager
 }
 
@@ -27,7 +28,7 @@ var (
 	ErrRefreshTokenExpired   = errors.New("refresh token expired")
 )
 
-func NewAuthService(queries *postgres.Queries, pool *pgxpool.Pool, jwt *auth.JWTManager) *AuthService {
+func NewAuthService(queries postgres.Querier, pool *pgxpool.Pool, jwt *auth.JWTManager) *AuthService {
 	return &AuthService{queries: queries, pool: pool, jwt: jwt}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -23,11 +24,11 @@ var (
 )
 
 type MemberService struct {
-	queries *postgres.Queries
-	pool    *pgxpool.Pool
+	queries postgres.Querier
+	pool    interface{ Begin(context.Context) (pgx.Tx, error) }
 }
 
-func NewMemberService(queries *postgres.Queries, pool *pgxpool.Pool) *MemberService {
+func NewMemberService(queries postgres.Querier, pool *pgxpool.Pool) *MemberService {
 	return &MemberService{queries: queries, pool: pool}
 }
 

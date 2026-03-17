@@ -21,6 +21,6 @@ type Queries struct {
 	db DBTX
 }
 
-func (q *Queries) WithTx(tx pgx.Tx) *Queries {
+func (q *Queries) WithTx(tx pgx.Tx) Querier {
 	return &Queries{db: tx}
 }
