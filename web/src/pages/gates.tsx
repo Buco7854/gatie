@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { DialogTitle } from '@headlessui/react'
 import {
   PlusIcon,
   PencilSquareIcon,
@@ -14,8 +13,8 @@ import {
 } from '@heroicons/react/24/outline'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/use-auth'
-import { apiFetch } from '@/lib/api'
-import type { Gate, GateWithToken, GatesPage } from '@/lib/types'
+import { gatesApi } from '@/lib/api'
+import type { Gate } from '@/lib/types'
 import { AppHeader } from '@/components/app-header'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
@@ -167,12 +166,11 @@ export function GatesPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['gates', page],
-    queryFn: () => apiFetch<GatesPage>(`/gates?page=${page}&per_page=${PER_PAGE}`),
+    queryFn: () => gatesApi.listGates(page, PER_PAGE),
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: GateFormData) =>
-      apiFetch<GateWithToken>('/gates', { method: 'POST', body: JSON.stringify(data) }),
+    mutationFn: (data: GateFormData) => gatesApi.createGate(data),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['gates'] })
       setModal({ type: 'token', token: result.token, gateName: result.name })
@@ -181,7 +179,7 @@ export function GatesPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: GateFormData }) =>
-      apiFetch<Gate>(`/gates/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+      gatesApi.updateGate(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gates'] })
       setModal(null)
@@ -189,7 +187,7 @@ export function GatesPage() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiFetch<undefined>(`/gates/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => gatesApi.deleteGate(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gates'] })
       setGateToDelete(null)
@@ -197,8 +195,7 @@ export function GatesPage() {
   })
 
   const regenerateMutation = useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<GateWithToken>(`/gates/${id}/token`, { method: 'POST' }),
+    mutationFn: (id: string) => gatesApi.regenerateGateToken(id),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['gates'] })
       setModal({ type: 'token', token: result.token, gateName: result.name })

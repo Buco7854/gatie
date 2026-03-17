@@ -21,7 +21,10 @@ type GateRepository interface {
 	UpdateGateToken(ctx context.Context, arg repository.UpdateGateTokenParams) (repository.Gate, error)
 }
 
-var ErrGateNotFound = errors.New("gate not found")
+var (
+	ErrGateNotFound = errors.New("gate not found")
+	ErrInvalidTTL   = errors.New("status_ttl_seconds must be between 1 and 86400")
+)
 
 type GateService struct {
 	repo    GateRepository
@@ -90,15 +93,14 @@ func (s *GateService) CreateGate(ctx context.Context, input CreateGateInput) (*G
 		return nil, err
 	}
 
-	ttl := input.StatusTTLSeconds
-	if ttl <= 0 {
-		ttl = 60
+	if input.StatusTTLSeconds < 1 || input.StatusTTLSeconds > 86400 {
+		return nil, ErrInvalidTTL
 	}
 
 	row, err := s.repo.CreateGate(ctx, repository.CreateGateParams{
 		Name:             input.Name,
 		GateTokenHash:    hash,
-		StatusTtlSeconds: ttl,
+		StatusTtlSeconds: input.StatusTTLSeconds,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating gate: %w", err)
@@ -108,12 +110,19 @@ func (s *GateService) CreateGate(ctx context.Context, input CreateGateInput) (*G
 }
 
 func (s *GateService) UpdateGate(ctx context.Context, id string, input UpdateGateInput) (*Gate, error) {
+	if input.Name == nil && input.StatusTTLSeconds == nil {
+		return nil, ErrNothingToUpdate
+	}
+
 	params := repository.PatchGateParams{ID: id}
 
 	if input.Name != nil {
 		params.Name = input.Name
 	}
 	if input.StatusTTLSeconds != nil {
+		if *input.StatusTTLSeconds < 1 || *input.StatusTTLSeconds > 86400 {
+			return nil, ErrInvalidTTL
+		}
 		params.StatusTtlSeconds = input.StatusTTLSeconds
 	}
 

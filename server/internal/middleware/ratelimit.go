@@ -119,17 +119,21 @@ func NewRateLimit(api huma.API, vk valkey.Client, tp *TrustedProxies, burst int,
 	}
 }
 
-// checkRateLimit implements a fixed window counter using Valkey INCR + EXPIRE.
+var rateLimitScript = valkey.NewLuaScript(`
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`)
+
+// checkRateLimit implements an atomic fixed window counter using a Lua script.
 func checkRateLimit(ctx context.Context, vk valkey.Client, key string, burst int, window time.Duration) (bool, error) {
-	cmds := make(valkey.Commands, 0, 2)
-	cmds = append(cmds, vk.B().Incr().Key(key).Build())
-	cmds = append(cmds, vk.B().Expire().Key(key).Seconds(int64(window.Seconds())).Nx().Build())
+	result := rateLimitScript.Exec(ctx, vk, []string{key}, []string{fmt.Sprintf("%d", int64(window.Seconds()))})
 
-	results := vk.DoMulti(ctx, cmds...)
-
-	count, err := results[0].AsInt64()
+	count, err := result.AsInt64()
 	if err != nil {
-		return false, fmt.Errorf("rate limit INCR: %w", err)
+		return false, fmt.Errorf("rate limit script: %w", err)
 	}
 
 	return count <= int64(burst), nil

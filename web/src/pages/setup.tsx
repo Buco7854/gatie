@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { apiFetch, type AuthTokens } from '@/lib/api'
+import { authApi } from '@/lib/api'
 import { setAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,7 +32,7 @@ export function SetupPage() {
 
   const { data: setupStatus, isError, isLoading } = useQuery({
     queryKey: ['setup-status'],
-    queryFn: () => apiFetch<{ needs_setup: boolean }>('/setup/status'),
+    queryFn: () => authApi.getSetupStatus(),
   })
 
   useEffect(() => {
@@ -49,10 +49,7 @@ export function SetupPage() {
 
   const mutation = useMutation({
     mutationFn: (data: Omit<FormData, 'confirmPassword'>) =>
-      apiFetch<AuthTokens>('/setup', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
+      authApi.setup(data.username, data.password),
     onSuccess: (data) => {
       setAuth(data)
       navigate({ to: '/' })

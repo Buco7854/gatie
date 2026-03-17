@@ -10,8 +10,8 @@ import {
 } from '@heroicons/react/24/outline'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/use-auth'
-import { apiFetch, ApiError } from '@/lib/api'
-import type { Member, MembersPage } from '@/lib/types'
+import { ApiError, membersApi } from '@/lib/api'
+import type { Member } from '@/lib/types'
 import { AppHeader } from '@/components/app-header'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
@@ -120,8 +120,7 @@ function CreateForm({ onSuccess }: { onSuccess: () => void }) {
   })
 
   const mutation = useMutation({
-    mutationFn: (data: CreateFormData) =>
-      apiFetch<Member>('/members', { method: 'POST', body: JSON.stringify(data) }),
+    mutationFn: (data: CreateFormData) => membersApi.createMember(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members'] })
       onSuccess()
@@ -217,12 +216,9 @@ function EditForm({ member, isSelf, onSuccess }: { member: Member; isSelf: boole
 
   const mutation = useMutation({
     mutationFn: (data: UpdateFormData) =>
-      apiFetch<Member>(`/members/${member.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          ...data,
-          display_name: data.display_name || null,
-        }),
+      membersApi.updateMember(member.id, {
+        ...data,
+        display_name: data.display_name || null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members'] })
@@ -308,11 +304,11 @@ export function MembersPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['members', page],
-    queryFn: () => apiFetch<MembersPage>(`/members?page=${page}&per_page=${PER_PAGE}`),
+    queryFn: () => membersApi.listMembers(page, PER_PAGE),
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiFetch<undefined>(`/members/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => membersApi.deleteMember(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['members'] })
       setMemberToDelete(null)

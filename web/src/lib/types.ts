@@ -1,3 +1,11 @@
+export interface AuthTokens {
+  access_token: string
+  refresh_token: string
+  member_id: string
+  role: string
+  username: string
+}
+
 export interface Member {
   id: string
   username: string

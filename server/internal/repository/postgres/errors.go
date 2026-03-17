@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -20,5 +21,5 @@ func mapError(err error) error {
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return repository.ErrConflict
 	}
-	return err
+	return fmt.Errorf("database: %w", err)
 }

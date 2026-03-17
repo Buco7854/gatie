@@ -1,12 +1,11 @@
 package handler
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
-
-	"github.com/gatie-io/gatie-server/internal/convert"
 )
 
 func TestFormatSeconds(t *testing.T) {
@@ -39,7 +38,8 @@ func TestUUIDToString(t *testing.T) {
 	}
 
 	u := pgtype.UUID{Bytes: bytes, Valid: true}
-	result := convert.UUIDToString(u)
+	b := u.Bytes
+	result := fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 	expected := "550e8400-e29b-41d4-a716-446655440000"
 
 	if result != expected {

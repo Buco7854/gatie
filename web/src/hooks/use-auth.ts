@@ -13,9 +13,11 @@ export function useAuth() {
       setStatus('authenticated')
       return
     }
+    let ignore = false
     silentRefresh().then((ok) => {
-      setStatus(ok ? 'authenticated' : 'unauthenticated')
+      if (!ignore) setStatus(ok ? 'authenticated' : 'unauthenticated')
     })
+    return () => { ignore = true }
   }, [])
 
   return { status, user: auth }

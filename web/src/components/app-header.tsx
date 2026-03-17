@@ -4,7 +4,7 @@ import { UsersIcon, ArrowRightOnRectangleIcon, HomeModernIcon } from '@heroicons
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { apiFetch } from '@/lib/api'
+import { authApi } from '@/lib/api'
 import { clearAuth } from '@/lib/auth'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
@@ -28,7 +28,7 @@ export function AppHeader() {
   const { user } = useAuth()
 
   const logoutMutation = useMutation({
-    mutationFn: () => apiFetch<undefined>('/auth/logout', { method: 'POST' }),
+    mutationFn: () => authApi.logout(),
     onSettled: () => {
       clearAuth()
       navigate({ to: '/login' })

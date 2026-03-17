@@ -6,7 +6,10 @@ import (
 	"time"
 )
 
-var ErrInvalidID = errors.New("invalid id format")
+var (
+	ErrInvalidID      = errors.New("invalid id format")
+	ErrNothingToUpdate = errors.New("no fields to update")
+)
 
 type Tx interface {
 	Commit(ctx context.Context) error

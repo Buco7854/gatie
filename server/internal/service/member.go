@@ -117,6 +117,10 @@ func (s *MemberService) CreateMember(ctx context.Context, input CreateMemberInpu
 }
 
 func (s *MemberService) UpdateMember(ctx context.Context, id string, input UpdateMemberInput) (*Member, error) {
+	if input.Username == nil && input.DisplayName == nil && !input.SetDisplayNameNull && input.Role == nil {
+		return nil, ErrNothingToUpdate
+	}
+
 	if input.Role != nil && input.CallerID == id {
 		current, err := s.repo.GetMemberByID(ctx, id)
 		if err != nil {

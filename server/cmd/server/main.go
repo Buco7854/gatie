@@ -85,13 +85,7 @@ func main() {
 		adminMW := middleware.NewRequireAdmin(api)
 		authRateLimitMW := middleware.NewRateLimit(api, vkClient, trustedProxies, 5, 10*time.Second)
 
-		beginTx := func(ctx context.Context) (*postgres.Repository, service.Tx, error) {
-			tx, err := dbpool.Begin(ctx)
-			if err != nil {
-				return nil, nil, err
-			}
-			return postgres.NewRepository(tx), tx, nil
-		}
+		beginTx := postgres.NewTxFactory(dbpool)
 
 		authService := service.NewAuthService(repo, jwtManager, func(ctx context.Context) (service.AuthRepository, service.Tx, error) {
 			return beginTx(ctx)
@@ -118,7 +112,10 @@ func main() {
 			Handler: router,
 		}
 
+		cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+
 		hooks.OnStart(func() {
+			go runTokenCleanup(cleanupCtx, repo)
 			slog.Info("GATIE server starting", "host", opts.Host, "port", opts.Port)
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				slog.Error("server error", "error", err)
@@ -128,6 +125,7 @@ func main() {
 
 		hooks.OnStop(func() {
 			slog.Info("shutting down")
+			cleanupCancel()
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			server.Shutdown(ctx)

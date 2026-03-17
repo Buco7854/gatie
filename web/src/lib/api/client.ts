@@ -1,12 +1,5 @@
 import { getAccessToken, setAuth, clearAuth } from '@/lib/auth'
-
-export interface AuthTokens {
-  access_token: string
-  refresh_token: string
-  member_id: string
-  role: string
-  username: string
-}
+import type { AuthTokens } from '@/lib/types'
 
 export interface ApiErrorDetail {
   location?: string

@@ -249,6 +249,8 @@ func (h *MemberHandler) updateMember(ctx context.Context, input *UpdateMemberInp
 				Message:  "username already taken",
 				Value:    svcInput.Username,
 			})
+		case errors.Is(err, service.ErrNothingToUpdate):
+			return nil, huma.Error422UnprocessableEntity("no fields to update")
 		}
 		return nil, huma.Error500InternalServerError("failed to update member", err)
 	}

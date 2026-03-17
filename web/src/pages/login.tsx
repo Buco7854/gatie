@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { apiFetch, type AuthTokens } from '@/lib/api'
+import { authApi } from '@/lib/api'
 import { setAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,11 +29,7 @@ export function LoginPage() {
   } = useForm<FormData>({ resolver: zodResolver(schema) })
 
   const mutation = useMutation({
-    mutationFn: (data: FormData) =>
-      apiFetch<AuthTokens>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
+    mutationFn: (data: FormData) => authApi.login(data.username, data.password),
     onSuccess: (data) => {
       setAuth(data)
       navigate({ to: '/' })

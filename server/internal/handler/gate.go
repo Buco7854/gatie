@@ -197,7 +197,7 @@ func (h *GateHandler) createGate(ctx context.Context, input *CreateGateBodyInput
 		StatusTTLSeconds: input.Body.StatusTTLSeconds,
 	})
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to create gate", err)
+		return nil, mapGateError(err, "failed to create gate")
 	}
 
 	return &GateWithTokenOutput{Body: GateWithTokenBody{
@@ -255,6 +255,10 @@ func mapGateError(err error, fallback string) error {
 		return huma.Error400BadRequest("invalid gate id format")
 	case errors.Is(err, service.ErrGateNotFound):
 		return huma.Error404NotFound("gate not found")
+	case errors.Is(err, service.ErrInvalidTTL):
+		return huma.Error422UnprocessableEntity(err.Error())
+	case errors.Is(err, service.ErrNothingToUpdate):
+		return huma.Error422UnprocessableEntity("no fields to update")
 	default:
 		return huma.Error500InternalServerError(fallback, err)
 	}
