@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/gatie-io/gatie-server/internal/auth"
 	"github.com/gatie-io/gatie-server/internal/convert"
 	"github.com/gatie-io/gatie-server/internal/repository"
@@ -17,10 +19,11 @@ var ErrGateNotFound = errors.New("gate not found")
 
 type GateService struct {
 	queries *postgres.Queries
+	pool    *pgxpool.Pool
 }
 
-func NewGateService(queries *postgres.Queries) *GateService {
-	return &GateService{queries: queries}
+func NewGateService(queries *postgres.Queries, pool *pgxpool.Pool) *GateService {
+	return &GateService{queries: queries, pool: pool}
 }
 
 type GatePage struct {
@@ -154,7 +157,15 @@ func (s *GateService) RegenerateToken(ctx context.Context, id string) (*GateWith
 		return nil, ErrInvalidID
 	}
 
-	_, err = s.queries.GetGateByID(ctx, uid)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.queries.WithTx(tx)
+
+	_, err = qtx.GetGateByID(ctx, uid)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrGateNotFound
@@ -167,12 +178,16 @@ func (s *GateService) RegenerateToken(ctx context.Context, id string) (*GateWith
 		return nil, err
 	}
 
-	row, err := s.queries.UpdateGateToken(ctx, postgres.UpdateGateTokenParams{
+	row, err := qtx.UpdateGateToken(ctx, postgres.UpdateGateTokenParams{
 		ID:            uid,
 		GateTokenHash: hash,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("updating gate token: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("committing transaction: %w", err)
 	}
 
 	return &GateWithToken{Gate: toGate(row), Token: plainToken}, nil

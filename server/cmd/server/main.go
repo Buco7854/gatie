@@ -91,7 +91,7 @@ func main() {
 		memberService := service.NewMemberService(queries, dbpool)
 		memberHandler := handler.NewMemberHandler(memberService, authMW, adminMW)
 
-		gateService := service.NewGateService(queries)
+		gateService := service.NewGateService(queries, dbpool)
 		gateHandler := handler.NewGateHandler(gateService, authMW, adminMW)
 
 		handler.RegisterHealth(api, dbpool, vkClient)
