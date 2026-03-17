@@ -4,7 +4,8 @@ import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { apiFetch } from '@/lib/api'
-import { clearAuth, getAuthState } from '@/lib/auth'
+import { clearAuth } from '@/lib/auth'
+import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { LangToggle } from '@/components/lang-toggle'
@@ -12,7 +13,7 @@ import { LangToggle } from '@/components/lang-toggle'
 export function AppHeader() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const user = getAuthState()
+  const { user } = useAuth()
 
   const logoutMutation = useMutation({
     mutationFn: () => apiFetch<undefined>('/auth/logout', { method: 'POST' }),
