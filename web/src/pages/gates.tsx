@@ -361,6 +361,9 @@ export function GatesPage() {
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           {t('gates.deleteConfirm', { name: gateToDelete?.name })}
         </p>
+        {deleteMutation.isError && (
+          <p className="mt-2 text-xs text-red-600 dark:text-red-400">{t('error.generic')}</p>
+        )}
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setGateToDelete(null)}>
             {t('action.cancel')}

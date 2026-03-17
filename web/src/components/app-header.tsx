@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import type { LinkProps } from '@tanstack/react-router'
 import { UsersIcon, ArrowRightOnRectangleIcon, HomeModernIcon } from '@heroicons/react/24/outline'
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -9,6 +10,17 @@ import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { LangToggle } from '@/components/lang-toggle'
+
+const navLinkClasses =
+  'flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 [&.active]:bg-zinc-200 [&.active]:text-zinc-900 dark:[&.active]:bg-zinc-800 dark:[&.active]:text-zinc-100'
+
+function NavLink({ children, ...props }: LinkProps & { children: React.ReactNode }) {
+  return (
+    <Link className={navLinkClasses} activeProps={{ className: 'active' }} {...props}>
+      {children}
+    </Link>
+  )
+}
 
 export function AppHeader() {
   const { t } = useTranslation()
@@ -35,22 +47,14 @@ export function AppHeader() {
 
         {user.role === 'ADMIN' && (
           <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
-            <Link
-              to="/gates"
-              className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 [&.active]:bg-zinc-200 [&.active]:text-zinc-900 dark:[&.active]:bg-zinc-800 dark:[&.active]:text-zinc-100"
-              activeProps={{ className: 'active' }}
-            >
+            <NavLink to="/gates">
               <HomeModernIcon className="size-4 shrink-0" aria-hidden="true" />
               <span className="hidden sm:inline">{t('nav.gates')}</span>
-            </Link>
-            <Link
-              to="/members"
-              className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 [&.active]:bg-zinc-200 [&.active]:text-zinc-900 dark:[&.active]:bg-zinc-800 dark:[&.active]:text-zinc-100"
-              activeProps={{ className: 'active' }}
-            >
+            </NavLink>
+            <NavLink to="/members">
               <UsersIcon className="size-4 shrink-0" aria-hidden="true" />
               <span className="hidden sm:inline">{t('nav.members')}</span>
-            </Link>
+            </NavLink>
           </nav>
         )}
 
