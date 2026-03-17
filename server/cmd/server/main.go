@@ -26,11 +26,12 @@ import (
 )
 
 type Options struct {
-	Host        string `doc:"Host to listen on" default:"0.0.0.0"`
-	Port        int    `doc:"Port to listen on" short:"p" default:"8888"`
-	DatabaseURL string `doc:"PostgreSQL connection URL" default:"postgres://gatie:gatie@localhost:5432/gatie?sslmode=disable"`
-	ValkeyURL   string `doc:"Valkey connection URL" default:"valkey://localhost:6379"`
-	JWTSecret   string `doc:"JWT signing secret (auto-generated if empty)" default:""`
+	Host           string `doc:"Host to listen on" default:"0.0.0.0"`
+	Port           int    `doc:"Port to listen on" short:"p" default:"8888"`
+	DatabaseURL    string `doc:"PostgreSQL connection URL" default:"postgres://gatie:gatie@localhost:5432/gatie?sslmode=disable"`
+	ValkeyURL      string `doc:"Valkey connection URL" default:"valkey://localhost:6379"`
+	JWTSecret      string `doc:"JWT signing secret (auto-generated if empty)" default:""`
+	TrustedProxies int    `doc:"Number of trusted reverse proxies (0 = direct access, 1 = Caddy)" default:"1"`
 }
 
 func main() {
@@ -76,7 +77,7 @@ func main() {
 
 		authMW := middleware.NewAuthMiddleware(api, jwtManager)
 		adminMW := middleware.NewRequireAdmin(api)
-		authRateLimitMW := middleware.NewRateLimit(api, vkClient, 5, 10*time.Second)
+		authRateLimitMW := middleware.NewRateLimit(api, vkClient, opts.TrustedProxies, 5, 10*time.Second)
 
 		authService := service.NewAuthService(queries, dbpool, jwtManager)
 		authHandler := handler.NewAuthHandler(authService, authRateLimitMW)
