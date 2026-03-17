@@ -6,85 +6,77 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/gatie-io/gatie-server/internal/repository"
 )
 
-func (q *Queries) CountGates(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, `SELECT count(*) FROM gates`)
+func (r *Repository) CountGates(ctx context.Context) (int64, error) {
+	row := r.db.QueryRow(ctx, `SELECT count(*) FROM gates`)
 	var count int64
 	err := row.Scan(&count)
-	return count, MapError(err)
+	return count, mapError(err)
 }
 
-type CreateGateParams struct {
-	Name             string
-	GateTokenHash    string
-	StatusTtlSeconds int32
-}
-
-func (q *Queries) CreateGate(ctx context.Context, arg CreateGateParams) (Gate, error) {
-	row := q.db.QueryRow(ctx,
-		`INSERT INTO gates (name, gate_token_hash, status_ttl_seconds)
-		VALUES ($1, $2, $3)
-		RETURNING id, name, gate_token_hash, status_ttl_seconds, created_at, updated_at`,
-		arg.Name, arg.GateTokenHash, arg.StatusTtlSeconds,
-	)
-	var g Gate
-	err := row.Scan(&g.ID, &g.Name, &g.GateTokenHash, &g.StatusTtlSeconds, &g.CreatedAt, &g.UpdatedAt)
-	return g, MapError(err)
-}
-
-func (q *Queries) DeleteGate(ctx context.Context, id pgtype.UUID) error {
-	row := q.db.QueryRow(ctx, `DELETE FROM gates WHERE id = $1 RETURNING id`, id)
-	var deleted pgtype.UUID
-	return MapError(row.Scan(&deleted))
-}
-
-func (q *Queries) GetGateByID(ctx context.Context, id pgtype.UUID) (Gate, error) {
-	row := q.db.QueryRow(ctx,
-		`SELECT id, name, gate_token_hash, status_ttl_seconds, created_at, updated_at
-		FROM gates WHERE id = $1`, id,
-	)
-	var g Gate
-	err := row.Scan(&g.ID, &g.Name, &g.GateTokenHash, &g.StatusTtlSeconds, &g.CreatedAt, &g.UpdatedAt)
-	return g, MapError(err)
-}
-
-type ListGatesParams struct {
-	Limit  int32
-	Offset int32
-}
-
-func (q *Queries) ListGates(ctx context.Context, arg ListGatesParams) ([]Gate, error) {
-	rows, err := q.db.Query(ctx,
+func (r *Repository) ListGates(ctx context.Context, arg repository.ListParams) ([]repository.Gate, error) {
+	rows, err := r.db.Query(ctx,
 		`SELECT id, name, gate_token_hash, status_ttl_seconds, created_at, updated_at
 		FROM gates ORDER BY created_at ASC LIMIT $1 OFFSET $2`,
 		arg.Limit, arg.Offset,
 	)
 	if err != nil {
-		return nil, MapError(err)
+		return nil, mapError(err)
 	}
 	defer rows.Close()
 
-	items := []Gate{}
+	var out []repository.Gate
 	for rows.Next() {
-		var g Gate
+		var g gateRow
 		if err := rows.Scan(&g.ID, &g.Name, &g.GateTokenHash, &g.StatusTtlSeconds, &g.CreatedAt, &g.UpdatedAt); err != nil {
-			return nil, MapError(err)
+			return nil, mapError(err)
 		}
-		items = append(items, g)
+		out = append(out, toRepoGate(g))
 	}
-	return items, rows.Err()
+	return out, rows.Err()
 }
 
-type PatchGateParams struct {
-	ID               pgtype.UUID
-	Name             *string
-	StatusTtlSeconds *int32
+func (r *Repository) GetGateByID(ctx context.Context, id string) (repository.Gate, error) {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return repository.Gate{}, err
+	}
+	row := r.db.QueryRow(ctx,
+		`SELECT id, name, gate_token_hash, status_ttl_seconds, created_at, updated_at
+		FROM gates WHERE id = $1`, uid,
+	)
+	var g gateRow
+	if err := row.Scan(&g.ID, &g.Name, &g.GateTokenHash, &g.StatusTtlSeconds, &g.CreatedAt, &g.UpdatedAt); err != nil {
+		return repository.Gate{}, mapError(err)
+	}
+	return toRepoGate(g), nil
 }
 
-func (q *Queries) PatchGate(ctx context.Context, arg PatchGateParams) (Gate, error) {
+func (r *Repository) CreateGate(ctx context.Context, arg repository.CreateGateParams) (repository.Gate, error) {
+	row := r.db.QueryRow(ctx,
+		`INSERT INTO gates (name, gate_token_hash, status_ttl_seconds)
+		VALUES ($1, $2, $3)
+		RETURNING id, name, gate_token_hash, status_ttl_seconds, created_at, updated_at`,
+		arg.Name, arg.GateTokenHash, arg.StatusTtlSeconds,
+	)
+	var g gateRow
+	if err := row.Scan(&g.ID, &g.Name, &g.GateTokenHash, &g.StatusTtlSeconds, &g.CreatedAt, &g.UpdatedAt); err != nil {
+		return repository.Gate{}, mapError(err)
+	}
+	return toRepoGate(g), nil
+}
+
+func (r *Repository) PatchGate(ctx context.Context, arg repository.PatchGateParams) (repository.Gate, error) {
+	uid, err := parseUUID(arg.ID)
+	if err != nil {
+		return repository.Gate{}, err
+	}
+
 	setClauses := []string{}
-	args := []any{arg.ID}
+	args := []any{uid}
 	i := 2
 
 	if arg.Name != nil {
@@ -99,7 +91,7 @@ func (q *Queries) PatchGate(ctx context.Context, arg PatchGateParams) (Gate, err
 	}
 
 	if len(setClauses) == 0 {
-		return q.GetGateByID(ctx, arg.ID)
+		return r.GetGateByID(ctx, arg.ID)
 	}
 
 	query := fmt.Sprintf(
@@ -108,25 +100,38 @@ func (q *Queries) PatchGate(ctx context.Context, arg PatchGateParams) (Gate, err
 		strings.Join(setClauses, ", "),
 	)
 
-	row := q.db.QueryRow(ctx, query, args...)
-	var g Gate
-	err := row.Scan(&g.ID, &g.Name, &g.GateTokenHash, &g.StatusTtlSeconds, &g.CreatedAt, &g.UpdatedAt)
-	return g, MapError(err)
+	row := r.db.QueryRow(ctx, query, args...)
+	var g gateRow
+	if err := row.Scan(&g.ID, &g.Name, &g.GateTokenHash, &g.StatusTtlSeconds, &g.CreatedAt, &g.UpdatedAt); err != nil {
+		return repository.Gate{}, mapError(err)
+	}
+	return toRepoGate(g), nil
 }
 
-type UpdateGateTokenParams struct {
-	ID            pgtype.UUID
-	GateTokenHash string
+func (r *Repository) DeleteGate(ctx context.Context, id string) error {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return err
+	}
+	row := r.db.QueryRow(ctx, `DELETE FROM gates WHERE id = $1 RETURNING id`, uid)
+	var deleted pgtype.UUID
+	return mapError(row.Scan(&deleted))
 }
 
-func (q *Queries) UpdateGateToken(ctx context.Context, arg UpdateGateTokenParams) (Gate, error) {
-	row := q.db.QueryRow(ctx,
+func (r *Repository) UpdateGateToken(ctx context.Context, arg repository.UpdateGateTokenParams) (repository.Gate, error) {
+	uid, err := parseUUID(arg.ID)
+	if err != nil {
+		return repository.Gate{}, err
+	}
+	row := r.db.QueryRow(ctx,
 		`UPDATE gates SET gate_token_hash = $2, updated_at = now()
 		WHERE id = $1
 		RETURNING id, name, gate_token_hash, status_ttl_seconds, created_at, updated_at`,
-		arg.ID, arg.GateTokenHash,
+		uid, arg.GateTokenHash,
 	)
-	var g Gate
-	err := row.Scan(&g.ID, &g.Name, &g.GateTokenHash, &g.StatusTtlSeconds, &g.CreatedAt, &g.UpdatedAt)
-	return g, MapError(err)
+	var g gateRow
+	if err := row.Scan(&g.ID, &g.Name, &g.GateTokenHash, &g.StatusTtlSeconds, &g.CreatedAt, &g.UpdatedAt); err != nil {
+		return repository.Gate{}, mapError(err)
+	}
+	return toRepoGate(g), nil
 }

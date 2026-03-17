@@ -13,14 +13,10 @@ type DBTX interface {
 	QueryRow(context.Context, string, ...interface{}) pgx.Row
 }
 
-func New(db DBTX) *Queries {
-	return &Queries{db: db}
-}
-
-type Queries struct {
+type Repository struct {
 	db DBTX
 }
 
-func (q *Queries) WithTx(tx pgx.Tx) Querier {
-	return &Queries{db: tx}
+func NewRepository(db DBTX) *Repository {
+	return &Repository{db: db}
 }

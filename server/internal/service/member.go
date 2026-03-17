@@ -5,13 +5,19 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgtype"
-
 	"github.com/gatie-io/gatie-server/internal/auth"
-	"github.com/gatie-io/gatie-server/internal/convert"
 	"github.com/gatie-io/gatie-server/internal/repository"
-	"github.com/gatie-io/gatie-server/internal/repository/postgres"
 )
+
+type MemberRepository interface {
+	CountMembers(ctx context.Context) (int64, error)
+	ListMembers(ctx context.Context, arg repository.ListParams) ([]repository.Member, error)
+	GetMemberByID(ctx context.Context, id string) (repository.Member, error)
+	CreateMember(ctx context.Context, arg repository.CreateMemberParams) (repository.Member, error)
+	PatchMember(ctx context.Context, arg repository.PatchMemberParams) (repository.Member, error)
+	DeleteMember(ctx context.Context, id string) error
+	CountMembersByRoleForUpdate(ctx context.Context, role string) (int64, error)
+}
 
 var (
 	ErrMemberNotFound = errors.New("member not found")
@@ -22,12 +28,12 @@ var (
 )
 
 type MemberService struct {
-	queries postgres.Querier
-	pool    TxBeginner
+	repo    MemberRepository
+	beginTx func(ctx context.Context) (MemberRepository, Tx, error)
 }
 
-func NewMemberService(queries postgres.Querier, pool TxBeginner) *MemberService {
-	return &MemberService{queries: queries, pool: pool}
+func NewMemberService(repo MemberRepository, beginTx func(ctx context.Context) (MemberRepository, Tx, error)) *MemberService {
+	return &MemberService{repo: repo, beginTx: beginTx}
 }
 
 type MemberPage struct {
@@ -51,12 +57,12 @@ type UpdateMemberInput struct {
 }
 
 func (s *MemberService) ListMembers(ctx context.Context, page, perPage int) (*MemberPage, error) {
-	total, err := s.queries.CountMembers(ctx)
+	total, err := s.repo.CountMembers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("counting members: %w", err)
 	}
 
-	rows, err := s.queries.ListMembers(ctx, postgres.ListMembersParams{
+	rows, err := s.repo.ListMembers(ctx, repository.ListParams{
 		Limit:  int32(perPage),
 		Offset: int32((page - 1) * perPage),
 	})
@@ -73,17 +79,9 @@ func (s *MemberService) ListMembers(ctx context.Context, page, perPage int) (*Me
 }
 
 func (s *MemberService) GetMember(ctx context.Context, id string) (*Member, error) {
-	uid, err := convert.ParseUUID(id)
+	row, err := s.repo.GetMemberByID(ctx, id)
 	if err != nil {
-		return nil, ErrInvalidID
-	}
-
-	row, err := s.queries.GetMemberByID(ctx, uid)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrMemberNotFound
-		}
-		return nil, fmt.Errorf("getting member: %w", err)
+		return nil, mapMemberError(err, "getting member")
 	}
 
 	m := toMember(row)
@@ -96,12 +94,12 @@ func (s *MemberService) CreateMember(ctx context.Context, input CreateMemberInpu
 		return nil, err
 	}
 
-	displayName := pgtype.Text{}
+	var displayName *string
 	if input.DisplayName != "" {
-		displayName = pgtype.Text{String: input.DisplayName, Valid: true}
+		displayName = &input.DisplayName
 	}
 
-	row, err := s.queries.CreateMember(ctx, postgres.CreateMemberParams{
+	row, err := s.repo.CreateMember(ctx, repository.CreateMemberParams{
 		Username:     input.Username,
 		DisplayName:  displayName,
 		PasswordHash: hash,
@@ -119,25 +117,17 @@ func (s *MemberService) CreateMember(ctx context.Context, input CreateMemberInpu
 }
 
 func (s *MemberService) UpdateMember(ctx context.Context, id string, input UpdateMemberInput) (*Member, error) {
-	uid, err := convert.ParseUUID(id)
-	if err != nil {
-		return nil, ErrInvalidID
-	}
-
 	if input.Role != nil && input.CallerID == id {
-		current, err := s.queries.GetMemberByID(ctx, uid)
+		current, err := s.repo.GetMemberByID(ctx, id)
 		if err != nil {
-			if errors.Is(err, repository.ErrNotFound) {
-				return nil, ErrMemberNotFound
-			}
-			return nil, fmt.Errorf("getting member: %w", err)
+			return nil, mapMemberError(err, "getting member")
 		}
 		if *input.Role != current.Role {
 			return nil, ErrSelfRoleChange
 		}
 	}
 
-	params := postgres.PatchMemberParams{ID: uid}
+	params := repository.PatchMemberParams{ID: id}
 
 	if input.Username != nil {
 		params.Username = input.Username
@@ -151,15 +141,12 @@ func (s *MemberService) UpdateMember(ctx context.Context, id string, input Updat
 		params.Role = input.Role
 	}
 
-	row, err := s.queries.PatchMember(ctx, params)
+	row, err := s.repo.PatchMember(ctx, params)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrMemberNotFound
-		}
 		if errors.Is(err, repository.ErrConflict) {
 			return nil, ErrUsernameExists
 		}
-		return nil, fmt.Errorf("updating member: %w", err)
+		return nil, mapMemberError(err, "updating member")
 	}
 
 	m := toMember(row)
@@ -167,29 +154,19 @@ func (s *MemberService) UpdateMember(ctx context.Context, id string, input Updat
 }
 
 func (s *MemberService) DeleteMember(ctx context.Context, id string, callerID string) error {
-	uid, err := convert.ParseUUID(id)
-	if err != nil {
-		return ErrInvalidID
-	}
-
 	if id == callerID {
 		return ErrSelfDelete
 	}
 
-	tx, err := s.pool.Begin(ctx)
+	qtx, tx, err := s.beginTx(ctx)
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	qtx := s.queries.WithTx(tx)
-
-	row, err := qtx.GetMemberByID(ctx, uid)
+	row, err := qtx.GetMemberByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ErrMemberNotFound
-		}
-		return fmt.Errorf("getting member: %w", err)
+		return mapMemberError(err, "getting member")
 	}
 
 	if row.Role == RoleAdmin {
@@ -202,24 +179,35 @@ func (s *MemberService) DeleteMember(ctx context.Context, id string, callerID st
 		}
 	}
 
-	if err := qtx.DeleteMember(ctx, uid); err != nil {
+	if err := qtx.DeleteMember(ctx, id); err != nil {
 		return fmt.Errorf("deleting member: %w", err)
 	}
 
 	return tx.Commit(ctx)
 }
 
-func toMember(r postgres.Member) Member {
+func mapMemberError(err error, fallback string) error {
+	switch {
+	case errors.Is(err, repository.ErrInvalidID):
+		return ErrInvalidID
+	case errors.Is(err, repository.ErrNotFound):
+		return ErrMemberNotFound
+	default:
+		return fmt.Errorf("%s: %w", fallback, err)
+	}
+}
+
+func toMember(r repository.Member) Member {
 	displayName := ""
-	if r.DisplayName.Valid {
-		displayName = r.DisplayName.String
+	if r.DisplayName != nil {
+		displayName = *r.DisplayName
 	}
 	return Member{
-		ID:          convert.UUIDToString(r.ID),
+		ID:          r.ID,
 		Username:    r.Username,
 		DisplayName: displayName,
 		Role:        r.Role,
-		CreatedAt:   r.CreatedAt.Time,
-		UpdatedAt:   r.UpdatedAt.Time,
+		CreatedAt:   r.CreatedAt,
+		UpdatedAt:   r.UpdatedAt,
 	}
 }

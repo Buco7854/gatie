@@ -4,16 +4,13 @@ import (
 	"context"
 	"errors"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 var ErrInvalidID = errors.New("invalid id format")
 
-// TxBeginner abstracts the ability to begin a database transaction.
-// *pgxpool.Pool implements this interface.
-type TxBeginner interface {
-	Begin(ctx context.Context) (pgx.Tx, error)
+type Tx interface {
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
 }
 
 type Member struct {

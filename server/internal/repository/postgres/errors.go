@@ -9,7 +9,7 @@ import (
 	"github.com/gatie-io/gatie-server/internal/repository"
 )
 
-func MapError(err error) error {
+func mapError(err error) error {
 	if err == nil {
 		return nil
 	}

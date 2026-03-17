@@ -52,7 +52,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		queries := postgres.New(dbpool)
+		repo := postgres.NewRepository(dbpool)
 
 		jwtSecret := opts.JWTSecret
 		if jwtSecret == "" {
@@ -85,13 +85,27 @@ func main() {
 		adminMW := middleware.NewRequireAdmin(api)
 		authRateLimitMW := middleware.NewRateLimit(api, vkClient, trustedProxies, 5, 10*time.Second)
 
-		authService := service.NewAuthService(queries, dbpool, jwtManager)
+		beginTx := func(ctx context.Context) (*postgres.Repository, service.Tx, error) {
+			tx, err := dbpool.Begin(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			return postgres.NewRepository(tx), tx, nil
+		}
+
+		authService := service.NewAuthService(repo, jwtManager, func(ctx context.Context) (service.AuthRepository, service.Tx, error) {
+			return beginTx(ctx)
+		})
 		authHandler := handler.NewAuthHandler(authService, authRateLimitMW)
 
-		memberService := service.NewMemberService(queries, dbpool)
+		memberService := service.NewMemberService(repo, func(ctx context.Context) (service.MemberRepository, service.Tx, error) {
+			return beginTx(ctx)
+		})
 		memberHandler := handler.NewMemberHandler(memberService, authMW, adminMW)
 
-		gateService := service.NewGateService(queries, dbpool)
+		gateService := service.NewGateService(repo, func(ctx context.Context) (service.GateRepository, service.Tx, error) {
+			return beginTx(ctx)
+		})
 		gateHandler := handler.NewGateHandler(gateService, authMW, adminMW)
 
 		handler.RegisterHealth(api, dbpool, vkClient)

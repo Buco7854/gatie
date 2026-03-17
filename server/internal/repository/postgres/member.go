@@ -6,112 +6,107 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/gatie-io/gatie-server/internal/repository"
 )
 
-func (q *Queries) CountMembers(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, `SELECT count(*) FROM members`)
+func (r *Repository) CountMembers(ctx context.Context) (int64, error) {
+	row := r.db.QueryRow(ctx, `SELECT count(*) FROM members`)
 	var count int64
 	err := row.Scan(&count)
-	return count, MapError(err)
+	return count, mapError(err)
 }
 
-func (q *Queries) CountMembersByRole(ctx context.Context, role string) (int64, error) {
-	row := q.db.QueryRow(ctx, `SELECT count(*) FROM members WHERE role = $1`, role)
+func (r *Repository) CountMembersByRole(ctx context.Context, role string) (int64, error) {
+	row := r.db.QueryRow(ctx, `SELECT count(*) FROM members WHERE role = $1`, role)
 	var count int64
 	err := row.Scan(&count)
-	return count, MapError(err)
+	return count, mapError(err)
 }
 
-func (q *Queries) CountMembersByRoleForUpdate(ctx context.Context, role string) (int64, error) {
-	row := q.db.QueryRow(ctx, `SELECT count(*) FROM members WHERE role = $1 FOR UPDATE`, role)
+func (r *Repository) CountMembersByRoleForUpdate(ctx context.Context, role string) (int64, error) {
+	row := r.db.QueryRow(ctx, `SELECT count(*) FROM members WHERE role = $1 FOR UPDATE`, role)
 	var count int64
 	err := row.Scan(&count)
-	return count, MapError(err)
+	return count, mapError(err)
 }
 
-type CreateMemberParams struct {
-	Username     string
-	DisplayName  pgtype.Text
-	PasswordHash string
-	Role         string
-}
-
-func (q *Queries) CreateMember(ctx context.Context, arg CreateMemberParams) (Member, error) {
-	row := q.db.QueryRow(ctx,
-		`INSERT INTO members (username, display_name, password_hash, role)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, username, display_name, password_hash, role, created_at, updated_at`,
-		arg.Username, arg.DisplayName, arg.PasswordHash, arg.Role,
-	)
-	var m Member
-	err := row.Scan(&m.ID, &m.Username, &m.DisplayName, &m.PasswordHash, &m.Role, &m.CreatedAt, &m.UpdatedAt)
-	return m, MapError(err)
-}
-
-func (q *Queries) DeleteMember(ctx context.Context, id pgtype.UUID) error {
-	row := q.db.QueryRow(ctx, `DELETE FROM members WHERE id = $1 RETURNING id`, id)
-	var deleted pgtype.UUID
-	return MapError(row.Scan(&deleted))
-}
-
-func (q *Queries) GetMemberByID(ctx context.Context, id pgtype.UUID) (Member, error) {
-	row := q.db.QueryRow(ctx,
-		`SELECT id, username, display_name, password_hash, role, created_at, updated_at
-		FROM members WHERE id = $1`, id,
-	)
-	var m Member
-	err := row.Scan(&m.ID, &m.Username, &m.DisplayName, &m.PasswordHash, &m.Role, &m.CreatedAt, &m.UpdatedAt)
-	return m, MapError(err)
-}
-
-func (q *Queries) GetMemberByUsername(ctx context.Context, username string) (Member, error) {
-	row := q.db.QueryRow(ctx,
-		`SELECT id, username, display_name, password_hash, role, created_at, updated_at
-		FROM members WHERE username = $1`, username,
-	)
-	var m Member
-	err := row.Scan(&m.ID, &m.Username, &m.DisplayName, &m.PasswordHash, &m.Role, &m.CreatedAt, &m.UpdatedAt)
-	return m, MapError(err)
-}
-
-type ListMembersParams struct {
-	Limit  int32
-	Offset int32
-}
-
-func (q *Queries) ListMembers(ctx context.Context, arg ListMembersParams) ([]Member, error) {
-	rows, err := q.db.Query(ctx,
+func (r *Repository) ListMembers(ctx context.Context, arg repository.ListParams) ([]repository.Member, error) {
+	rows, err := r.db.Query(ctx,
 		`SELECT id, username, display_name, password_hash, role, created_at, updated_at
 		FROM members ORDER BY created_at ASC LIMIT $1 OFFSET $2`,
 		arg.Limit, arg.Offset,
 	)
 	if err != nil {
-		return nil, MapError(err)
+		return nil, mapError(err)
 	}
 	defer rows.Close()
 
-	items := []Member{}
+	var out []repository.Member
 	for rows.Next() {
-		var m Member
+		var m memberRow
 		if err := rows.Scan(&m.ID, &m.Username, &m.DisplayName, &m.PasswordHash, &m.Role, &m.CreatedAt, &m.UpdatedAt); err != nil {
-			return nil, MapError(err)
+			return nil, mapError(err)
 		}
-		items = append(items, m)
+		out = append(out, toRepoMember(m))
 	}
-	return items, rows.Err()
+	return out, rows.Err()
 }
 
-type PatchMemberParams struct {
-	ID                 pgtype.UUID
-	Username           *string
-	DisplayName        *string
-	SetDisplayNameNull bool
-	Role               *string
+func (r *Repository) GetMemberByID(ctx context.Context, id string) (repository.Member, error) {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return repository.Member{}, err
+	}
+	row := r.db.QueryRow(ctx,
+		`SELECT id, username, display_name, password_hash, role, created_at, updated_at
+		FROM members WHERE id = $1`, uid,
+	)
+	var m memberRow
+	if err := row.Scan(&m.ID, &m.Username, &m.DisplayName, &m.PasswordHash, &m.Role, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		return repository.Member{}, mapError(err)
+	}
+	return toRepoMember(m), nil
 }
 
-func (q *Queries) PatchMember(ctx context.Context, arg PatchMemberParams) (Member, error) {
+func (r *Repository) GetMemberByUsername(ctx context.Context, username string) (repository.Member, error) {
+	row := r.db.QueryRow(ctx,
+		`SELECT id, username, display_name, password_hash, role, created_at, updated_at
+		FROM members WHERE username = $1`, username,
+	)
+	var m memberRow
+	if err := row.Scan(&m.ID, &m.Username, &m.DisplayName, &m.PasswordHash, &m.Role, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		return repository.Member{}, mapError(err)
+	}
+	return toRepoMember(m), nil
+}
+
+func (r *Repository) CreateMember(ctx context.Context, arg repository.CreateMemberParams) (repository.Member, error) {
+	displayName := pgtype.Text{}
+	if arg.DisplayName != nil {
+		displayName = pgtype.Text{String: *arg.DisplayName, Valid: true}
+	}
+	row := r.db.QueryRow(ctx,
+		`INSERT INTO members (username, display_name, password_hash, role)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, username, display_name, password_hash, role, created_at, updated_at`,
+		arg.Username, displayName, arg.PasswordHash, arg.Role,
+	)
+	var m memberRow
+	if err := row.Scan(&m.ID, &m.Username, &m.DisplayName, &m.PasswordHash, &m.Role, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		return repository.Member{}, mapError(err)
+	}
+	return toRepoMember(m), nil
+}
+
+func (r *Repository) PatchMember(ctx context.Context, arg repository.PatchMemberParams) (repository.Member, error) {
+	uid, err := parseUUID(arg.ID)
+	if err != nil {
+		return repository.Member{}, err
+	}
+
 	setClauses := []string{}
-	args := []any{arg.ID}
+	args := []any{uid}
 	i := 2
 
 	if arg.Username != nil {
@@ -133,7 +128,7 @@ func (q *Queries) PatchMember(ctx context.Context, arg PatchMemberParams) (Membe
 	}
 
 	if len(setClauses) == 0 {
-		return q.GetMemberByID(ctx, arg.ID)
+		return r.GetMemberByID(ctx, arg.ID)
 	}
 
 	query := fmt.Sprintf(
@@ -142,8 +137,20 @@ func (q *Queries) PatchMember(ctx context.Context, arg PatchMemberParams) (Membe
 		strings.Join(setClauses, ", "),
 	)
 
-	row := q.db.QueryRow(ctx, query, args...)
-	var m Member
-	err := row.Scan(&m.ID, &m.Username, &m.DisplayName, &m.PasswordHash, &m.Role, &m.CreatedAt, &m.UpdatedAt)
-	return m, MapError(err)
+	row := r.db.QueryRow(ctx, query, args...)
+	var m memberRow
+	if err := row.Scan(&m.ID, &m.Username, &m.DisplayName, &m.PasswordHash, &m.Role, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		return repository.Member{}, mapError(err)
+	}
+	return toRepoMember(m), nil
+}
+
+func (r *Repository) DeleteMember(ctx context.Context, id string) error {
+	uid, err := parseUUID(id)
+	if err != nil {
+		return err
+	}
+	row := r.db.QueryRow(ctx, `DELETE FROM members WHERE id = $1 RETURNING id`, uid)
+	var deleted pgtype.UUID
+	return mapError(row.Scan(&deleted))
 }

@@ -8,20 +8,28 @@ import (
 	"fmt"
 
 	"github.com/gatie-io/gatie-server/internal/auth"
-	"github.com/gatie-io/gatie-server/internal/convert"
 	"github.com/gatie-io/gatie-server/internal/repository"
-	"github.com/gatie-io/gatie-server/internal/repository/postgres"
 )
+
+type GateRepository interface {
+	CountGates(ctx context.Context) (int64, error)
+	ListGates(ctx context.Context, arg repository.ListParams) ([]repository.Gate, error)
+	GetGateByID(ctx context.Context, id string) (repository.Gate, error)
+	CreateGate(ctx context.Context, arg repository.CreateGateParams) (repository.Gate, error)
+	PatchGate(ctx context.Context, arg repository.PatchGateParams) (repository.Gate, error)
+	DeleteGate(ctx context.Context, id string) error
+	UpdateGateToken(ctx context.Context, arg repository.UpdateGateTokenParams) (repository.Gate, error)
+}
 
 var ErrGateNotFound = errors.New("gate not found")
 
 type GateService struct {
-	queries postgres.Querier
-	pool    TxBeginner
+	repo    GateRepository
+	beginTx func(ctx context.Context) (GateRepository, Tx, error)
 }
 
-func NewGateService(queries postgres.Querier, pool TxBeginner) *GateService {
-	return &GateService{queries: queries, pool: pool}
+func NewGateService(repo GateRepository, beginTx func(ctx context.Context) (GateRepository, Tx, error)) *GateService {
+	return &GateService{repo: repo, beginTx: beginTx}
 }
 
 type GatePage struct {
@@ -45,12 +53,12 @@ type GateWithToken struct {
 }
 
 func (s *GateService) ListGates(ctx context.Context, page, perPage int) (*GatePage, error) {
-	total, err := s.queries.CountGates(ctx)
+	total, err := s.repo.CountGates(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("counting gates: %w", err)
 	}
 
-	rows, err := s.queries.ListGates(ctx, postgres.ListGatesParams{
+	rows, err := s.repo.ListGates(ctx, repository.ListParams{
 		Limit:  int32(perPage),
 		Offset: int32((page - 1) * perPage),
 	})
@@ -67,17 +75,9 @@ func (s *GateService) ListGates(ctx context.Context, page, perPage int) (*GatePa
 }
 
 func (s *GateService) GetGate(ctx context.Context, id string) (*Gate, error) {
-	uid, err := convert.ParseUUID(id)
+	row, err := s.repo.GetGateByID(ctx, id)
 	if err != nil {
-		return nil, ErrInvalidID
-	}
-
-	row, err := s.queries.GetGateByID(ctx, uid)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrGateNotFound
-		}
-		return nil, fmt.Errorf("getting gate: %w", err)
+		return nil, mapGateServiceError(err, "getting gate")
 	}
 
 	g := toGate(row)
@@ -95,7 +95,7 @@ func (s *GateService) CreateGate(ctx context.Context, input CreateGateInput) (*G
 		ttl = 60
 	}
 
-	row, err := s.queries.CreateGate(ctx, postgres.CreateGateParams{
+	row, err := s.repo.CreateGate(ctx, repository.CreateGateParams{
 		Name:             input.Name,
 		GateTokenHash:    hash,
 		StatusTtlSeconds: ttl,
@@ -108,12 +108,7 @@ func (s *GateService) CreateGate(ctx context.Context, input CreateGateInput) (*G
 }
 
 func (s *GateService) UpdateGate(ctx context.Context, id string, input UpdateGateInput) (*Gate, error) {
-	uid, err := convert.ParseUUID(id)
-	if err != nil {
-		return nil, ErrInvalidID
-	}
-
-	params := postgres.PatchGateParams{ID: uid}
+	params := repository.PatchGateParams{ID: id}
 
 	if input.Name != nil {
 		params.Name = input.Name
@@ -122,12 +117,9 @@ func (s *GateService) UpdateGate(ctx context.Context, id string, input UpdateGat
 		params.StatusTtlSeconds = input.StatusTTLSeconds
 	}
 
-	row, err := s.queries.PatchGate(ctx, params)
+	row, err := s.repo.PatchGate(ctx, params)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrGateNotFound
-		}
-		return nil, fmt.Errorf("updating gate: %w", err)
+		return nil, mapGateServiceError(err, "updating gate")
 	}
 
 	g := toGate(row)
@@ -135,40 +127,22 @@ func (s *GateService) UpdateGate(ctx context.Context, id string, input UpdateGat
 }
 
 func (s *GateService) DeleteGate(ctx context.Context, id string) error {
-	uid, err := convert.ParseUUID(id)
-	if err != nil {
-		return ErrInvalidID
-	}
-
-	if err := s.queries.DeleteGate(ctx, uid); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ErrGateNotFound
-		}
-		return fmt.Errorf("deleting gate: %w", err)
+	if err := s.repo.DeleteGate(ctx, id); err != nil {
+		return mapGateServiceError(err, "deleting gate")
 	}
 	return nil
 }
 
 func (s *GateService) RegenerateToken(ctx context.Context, id string) (*GateWithToken, error) {
-	uid, err := convert.ParseUUID(id)
-	if err != nil {
-		return nil, ErrInvalidID
-	}
-
-	tx, err := s.pool.Begin(ctx)
+	qtx, tx, err := s.beginTx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("starting transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	qtx := s.queries.WithTx(tx)
-
-	_, err = qtx.GetGateByID(ctx, uid)
+	_, err = qtx.GetGateByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrGateNotFound
-		}
-		return nil, fmt.Errorf("getting gate: %w", err)
+		return nil, mapGateServiceError(err, "getting gate")
 	}
 
 	plainToken, hash, err := generateToken()
@@ -176,8 +150,8 @@ func (s *GateService) RegenerateToken(ctx context.Context, id string) (*GateWith
 		return nil, err
 	}
 
-	row, err := qtx.UpdateGateToken(ctx, postgres.UpdateGateTokenParams{
-		ID:            uid,
+	row, err := qtx.UpdateGateToken(ctx, repository.UpdateGateTokenParams{
+		ID:            id,
 		GateTokenHash: hash,
 	})
 	if err != nil {
@@ -201,12 +175,23 @@ func generateToken() (plainToken, hash string, err error) {
 	return plainToken, hash, nil
 }
 
-func toGate(r postgres.Gate) Gate {
+func mapGateServiceError(err error, fallback string) error {
+	switch {
+	case errors.Is(err, repository.ErrInvalidID):
+		return ErrInvalidID
+	case errors.Is(err, repository.ErrNotFound):
+		return ErrGateNotFound
+	default:
+		return fmt.Errorf("%s: %w", fallback, err)
+	}
+}
+
+func toGate(r repository.Gate) Gate {
 	return Gate{
-		ID:               convert.UUIDToString(r.ID),
+		ID:               r.ID,
 		Name:             r.Name,
 		StatusTTLSeconds: r.StatusTtlSeconds,
-		CreatedAt:        r.CreatedAt.Time,
-		UpdatedAt:        r.UpdatedAt.Time,
+		CreatedAt:        r.CreatedAt,
+		UpdatedAt:        r.UpdatedAt,
 	}
 }

@@ -6,17 +6,24 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
-
 	"github.com/gatie-io/gatie-server/internal/auth"
 	"github.com/gatie-io/gatie-server/internal/repository"
-	"github.com/gatie-io/gatie-server/internal/repository/postgres"
 )
 
+type AuthRepository interface {
+	CountMembers(ctx context.Context) (int64, error)
+	CreateMember(ctx context.Context, arg repository.CreateMemberParams) (repository.Member, error)
+	GetMemberByUsername(ctx context.Context, username string) (repository.Member, error)
+	GetMemberByID(ctx context.Context, id string) (repository.Member, error)
+	GetRefreshTokenByHash(ctx context.Context, tokenHash string) (repository.RefreshToken, error)
+	DeleteRefreshToken(ctx context.Context, id string) error
+	CreateRefreshToken(ctx context.Context, arg repository.CreateRefreshTokenParams) (repository.RefreshToken, error)
+}
+
 type AuthService struct {
-	queries postgres.Querier
-	pool    TxBeginner
+	repo    AuthRepository
 	jwt     *auth.JWTManager
+	beginTx func(ctx context.Context) (AuthRepository, Tx, error)
 }
 
 var (
@@ -26,8 +33,8 @@ var (
 	ErrRefreshTokenExpired   = errors.New("refresh token expired")
 )
 
-func NewAuthService(queries postgres.Querier, pool TxBeginner, jwt *auth.JWTManager) *AuthService {
-	return &AuthService{queries: queries, pool: pool, jwt: jwt}
+func NewAuthService(repo AuthRepository, jwt *auth.JWTManager, beginTx func(ctx context.Context) (AuthRepository, Tx, error)) *AuthService {
+	return &AuthService{repo: repo, jwt: jwt, beginTx: beginTx}
 }
 
 type SetupInput struct {
@@ -42,7 +49,7 @@ type AuthResult struct {
 }
 
 func (s *AuthService) NeedsSetup(ctx context.Context) (bool, error) {
-	count, err := s.queries.CountMembers(ctx)
+	count, err := s.repo.CountMembers(ctx)
 	if err != nil {
 		return false, fmt.Errorf("counting members: %w", err)
 	}
@@ -50,7 +57,7 @@ func (s *AuthService) NeedsSetup(ctx context.Context) (bool, error) {
 }
 
 func (s *AuthService) Setup(ctx context.Context, input SetupInput) (*AuthResult, error) {
-	count, err := s.queries.CountMembers(ctx)
+	count, err := s.repo.CountMembers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("counting members: %w", err)
 	}
@@ -63,7 +70,7 @@ func (s *AuthService) Setup(ctx context.Context, input SetupInput) (*AuthResult,
 		return nil, err
 	}
 
-	row, err := s.queries.CreateMember(ctx, postgres.CreateMemberParams{
+	row, err := s.repo.CreateMember(ctx, repository.CreateMemberParams{
 		Username:     input.Username,
 		PasswordHash: hash,
 		Role:         RoleAdmin,
@@ -81,7 +88,7 @@ type LoginInput struct {
 }
 
 func (s *AuthService) Login(ctx context.Context, input LoginInput) (*AuthResult, error) {
-	row, err := s.queries.GetMemberByUsername(ctx, input.Username)
+	row, err := s.repo.GetMemberByUsername(ctx, input.Username)
 	if err != nil {
 		return nil, ErrInvalidCredentials
 	}
@@ -96,13 +103,11 @@ func (s *AuthService) Login(ctx context.Context, input LoginInput) (*AuthResult,
 func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*AuthResult, error) {
 	tokenHash := auth.HashToken(rawToken)
 
-	tx, err := s.pool.Begin(ctx)
+	qtx, tx, err := s.beginTx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("beginning transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
-
-	qtx := s.queries.WithTx(tx)
 
 	rt, err := qtx.GetRefreshTokenByHash(ctx, tokenHash)
 	if err != nil {
@@ -113,7 +118,7 @@ func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*AuthResult
 		return nil, fmt.Errorf("revoking old token: %w", err)
 	}
 
-	if rt.ExpiresAt.Time.Before(time.Now()) {
+	if rt.ExpiresAt.Before(time.Now()) {
 		tx.Commit(ctx)
 		return nil, ErrRefreshTokenExpired
 	}
@@ -137,10 +142,10 @@ func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*AuthResult
 	refreshHash := auth.HashToken(rawRefresh)
 	expiresAt := time.Now().Add(s.jwt.RefreshDuration())
 
-	_, err = qtx.CreateRefreshToken(ctx, postgres.CreateRefreshTokenParams{
+	_, err = qtx.CreateRefreshToken(ctx, repository.CreateRefreshTokenParams{
 		MemberID:  rt.MemberID,
 		TokenHash: refreshHash,
-		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		ExpiresAt: expiresAt,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("storing refresh token: %w", err)
@@ -160,7 +165,7 @@ func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*AuthResult
 func (s *AuthService) Logout(ctx context.Context, rawToken string) error {
 	tokenHash := auth.HashToken(rawToken)
 
-	rt, err := s.queries.GetRefreshTokenByHash(ctx, tokenHash)
+	rt, err := s.repo.GetRefreshTokenByHash(ctx, tokenHash)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil
@@ -168,10 +173,10 @@ func (s *AuthService) Logout(ctx context.Context, rawToken string) error {
 		return fmt.Errorf("looking up refresh token: %w", err)
 	}
 
-	return s.queries.DeleteRefreshToken(ctx, rt.ID)
+	return s.repo.DeleteRefreshToken(ctx, rt.ID)
 }
 
-func (s *AuthService) generateTokens(ctx context.Context, row postgres.Member) (*AuthResult, error) {
+func (s *AuthService) generateTokens(ctx context.Context, row repository.Member) (*AuthResult, error) {
 	member := toMember(row)
 
 	accessToken, err := s.jwt.GenerateAccessToken(member.ID, member.Role, member.Username)
@@ -187,10 +192,10 @@ func (s *AuthService) generateTokens(ctx context.Context, row postgres.Member) (
 	refreshHash := auth.HashToken(rawRefresh)
 	expiresAt := time.Now().Add(s.jwt.RefreshDuration())
 
-	_, err = s.queries.CreateRefreshToken(ctx, postgres.CreateRefreshTokenParams{
+	_, err = s.repo.CreateRefreshToken(ctx, repository.CreateRefreshTokenParams{
 		MemberID:  row.ID,
 		TokenHash: refreshHash,
-		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		ExpiresAt: expiresAt,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("storing refresh token: %w", err)
