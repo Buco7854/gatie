@@ -139,15 +139,13 @@ func (s *GateService) DeleteGate(ctx context.Context, id string) error {
 		return ErrInvalidID
 	}
 
-	_, err = s.queries.GetGateByID(ctx, uid)
-	if err != nil {
+	if err := s.queries.DeleteGate(ctx, uid); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrGateNotFound
 		}
-		return fmt.Errorf("getting gate: %w", err)
+		return fmt.Errorf("deleting gate: %w", err)
 	}
-
-	return s.queries.DeleteGate(ctx, uid)
+	return nil
 }
 
 func (s *GateService) RegenerateToken(ctx context.Context, id string) (*GateWithToken, error) {

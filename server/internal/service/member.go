@@ -188,8 +188,8 @@ func (s *MemberService) DeleteMember(ctx context.Context, id string, callerID st
 		return fmt.Errorf("getting member: %w", err)
 	}
 
-	if row.Role == "ADMIN" {
-		adminCount, err := qtx.CountMembersByRoleForUpdate(ctx, "ADMIN")
+	if row.Role == RoleAdmin {
+		adminCount, err := qtx.CountMembersByRoleForUpdate(ctx, RoleAdmin)
 		if err != nil {
 			return fmt.Errorf("counting admins: %w", err)
 		}

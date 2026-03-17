@@ -29,3 +29,4 @@ Thumbs.db
 # Node (frontend)
 web/node_modules/
 web/dist/
+*.tsbuildinfo

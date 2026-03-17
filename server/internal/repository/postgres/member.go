@@ -47,8 +47,9 @@ func (q *Queries) CreateMember(ctx context.Context, arg CreateMemberParams) (Mem
 }
 
 func (q *Queries) DeleteMember(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, `DELETE FROM members WHERE id = $1`, id)
-	return MapError(err)
+	row := q.db.QueryRow(ctx, `DELETE FROM members WHERE id = $1 RETURNING id`, id)
+	var deleted pgtype.UUID
+	return MapError(row.Scan(&deleted))
 }
 
 func (q *Queries) GetMemberByID(ctx context.Context, id pgtype.UUID) (Member, error) {

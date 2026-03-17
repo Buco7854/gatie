@@ -67,7 +67,7 @@ func (s *AuthService) Setup(ctx context.Context, input SetupInput) (*AuthResult,
 	row, err := s.queries.CreateMember(ctx, postgres.CreateMemberParams{
 		Username:     input.Username,
 		PasswordHash: hash,
-		Role:         "ADMIN",
+		Role:         RoleAdmin,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating admin: %w", err)

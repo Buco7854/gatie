@@ -1,93 +1,59 @@
 package middleware
 
 import (
+	"context"
+	"fmt"
 	"net/http"
-	"sync"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/valkey-io/valkey-go"
 )
-
-type visitor struct {
-	tokens   float64
-	lastSeen time.Time
-}
-
-type rateLimiter struct {
-	mu       sync.Mutex
-	visitors map[string]*visitor
-	rate     float64 // tokens per second
-	burst    float64 // max tokens
-}
-
-func newRateLimiter(rate float64, burst int) *rateLimiter {
-	rl := &rateLimiter{
-		visitors: make(map[string]*visitor),
-		rate:     rate,
-		burst:    float64(burst),
-	}
-	go rl.cleanup()
-	return rl
-}
-
-func (rl *rateLimiter) allow(key string) bool {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
-	v, exists := rl.visitors[key]
-	now := time.Now()
-
-	if !exists {
-		rl.visitors[key] = &visitor{tokens: rl.burst - 1, lastSeen: now}
-		return true
-	}
-
-	elapsed := now.Sub(v.lastSeen).Seconds()
-	v.lastSeen = now
-	v.tokens += elapsed * rl.rate
-	if v.tokens > rl.burst {
-		v.tokens = rl.burst
-	}
-
-	if v.tokens < 1 {
-		return false
-	}
-
-	v.tokens--
-	return true
-}
-
-func (rl *rateLimiter) cleanup() {
-	for {
-		time.Sleep(5 * time.Minute)
-		rl.mu.Lock()
-		for key, v := range rl.visitors {
-			if time.Since(v.lastSeen) > 10*time.Minute {
-				delete(rl.visitors, key)
-			}
-		}
-		rl.mu.Unlock()
-	}
-}
 
 func extractIP(ctx huma.Context) string {
 	if forwarded := ctx.Header("X-Forwarded-For"); forwarded != "" {
-		return forwarded
+		if i := strings.IndexByte(forwarded, ','); i != -1 {
+			return strings.TrimSpace(forwarded[:i])
+		}
+		return strings.TrimSpace(forwarded)
 	}
-	return ctx.Host()
+	return ctx.RemoteAddr()
 }
 
-// NewRateLimit returns a Huma middleware that rate-limits requests per IP.
-// rate: requests per second, burst: max burst size.
-func NewRateLimit(api huma.API, rate float64, burst int) func(huma.Context, func(huma.Context)) {
-	rl := newRateLimiter(rate, burst)
-
+// NewRateLimit returns a Huma middleware that rate-limits requests per IP
+// using Valkey as backend. burst is the max number of requests allowed in
+// the given window duration.
+func NewRateLimit(api huma.API, vk valkey.Client, burst int, window time.Duration) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		ip := extractIP(ctx)
-		if !rl.allow(ip) {
+		key := fmt.Sprintf("ratelimit:%s", ip)
+
+		allowed, err := checkRateLimit(ctx.Context(), vk, key, burst, window)
+		if err != nil {
+			next(ctx)
+			return
+		}
+		if !allowed {
 			huma.WriteErr(api, ctx, http.StatusTooManyRequests, "too many requests, try again later")
 			return
 		}
 		next(ctx)
 	}
+}
+
+// checkRateLimit implements a sliding window counter using Valkey INCR + EXPIRE.
+func checkRateLimit(ctx context.Context, vk valkey.Client, key string, burst int, window time.Duration) (bool, error) {
+	cmds := make(valkey.Commands, 0, 3)
+	cmds = append(cmds, vk.B().Incr().Key(key).Build())
+	cmds = append(cmds, vk.B().Expire().Key(key).Seconds(int64(window.Seconds())).Nx().Build())
+
+	results := vk.DoMulti(ctx, cmds...)
+
+	count, err := results[0].AsInt64()
+	if err != nil {
+		return false, fmt.Errorf("rate limit INCR: %w", err)
+	}
+
+	return count <= int64(burst), nil
 }

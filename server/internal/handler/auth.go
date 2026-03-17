@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -208,22 +209,5 @@ func buildRefreshCookie(token string, maxAge time.Duration) string {
 }
 
 func formatSeconds(d time.Duration) string {
-	s := int(d.Seconds())
-	result := ""
-	if s < 0 {
-		result = "-"
-		s = -s
-	}
-	digits := []byte{}
-	if s == 0 {
-		digits = append(digits, '0')
-	}
-	for s > 0 {
-		digits = append(digits, byte('0'+s%10))
-		s /= 10
-	}
-	for i, j := 0, len(digits)-1; i < j; i, j = i+1, j-1 {
-		digits[i], digits[j] = digits[j], digits[i]
-	}
-	return result + string(digits)
+	return strconv.Itoa(int(d.Seconds()))
 }

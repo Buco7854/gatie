@@ -56,7 +56,10 @@ func main() {
 		jwtSecret := opts.JWTSecret
 		if jwtSecret == "" {
 			b := make([]byte, 32)
-			rand.Read(b)
+			if _, err := rand.Read(b); err != nil {
+				slog.Error("failed to generate JWT secret", "error", err)
+				os.Exit(1)
+			}
 			jwtSecret = hex.EncodeToString(b)
 			slog.Warn("JWT secret auto-generated, set SERVICE_JWT_SECRET for persistent sessions across restarts")
 		}
@@ -64,6 +67,7 @@ func main() {
 		jwtManager := auth.NewJWTManager(jwtSecret, 15*time.Minute, 7*24*time.Hour)
 
 		router := chi.NewMux()
+		router.Use(middleware.NewChiBodyLimit(1 << 20)) // 1 MB
 		config := huma.DefaultConfig("GATIE", "1.0.0")
 		config.Transformers = append(config.Transformers, middleware.ErrorCaptureTransformer)
 		api := humachi.New(router, config)
@@ -72,7 +76,7 @@ func main() {
 
 		authMW := middleware.NewAuthMiddleware(api, jwtManager)
 		adminMW := middleware.NewRequireAdmin(api)
-		authRateLimitMW := middleware.NewRateLimit(api, 0.5, 5)
+		authRateLimitMW := middleware.NewRateLimit(api, vkClient, 5, 10*time.Second)
 
 		authService := service.NewAuthService(queries, dbpool, jwtManager)
 		authHandler := handler.NewAuthHandler(authService, authRateLimitMW)
