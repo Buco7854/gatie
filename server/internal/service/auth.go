@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gatie-io/gatie-server/internal/auth"
 	"github.com/gatie-io/gatie-server/internal/repository"
@@ -15,8 +14,8 @@ import (
 )
 
 type AuthService struct {
-	queries *postgres.Queries
-	pool    *pgxpool.Pool
+	queries postgres.Querier
+	pool    TxBeginner
 	jwt     *auth.JWTManager
 }
 
@@ -27,7 +26,7 @@ var (
 	ErrRefreshTokenExpired   = errors.New("refresh token expired")
 )
 
-func NewAuthService(queries *postgres.Queries, pool *pgxpool.Pool, jwt *auth.JWTManager) *AuthService {
+func NewAuthService(queries postgres.Querier, pool TxBeginner, jwt *auth.JWTManager) *AuthService {
 	return &AuthService{queries: queries, pool: pool, jwt: jwt}
 }
 
@@ -67,7 +66,7 @@ func (s *AuthService) Setup(ctx context.Context, input SetupInput) (*AuthResult,
 	row, err := s.queries.CreateMember(ctx, postgres.CreateMemberParams{
 		Username:     input.Username,
 		PasswordHash: hash,
-		Role:         "ADMIN",
+		Role:         RoleAdmin,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating admin: %w", err)

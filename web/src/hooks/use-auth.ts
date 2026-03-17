@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { silentRefresh } from '@/lib/api'
-import { isAuthenticated, getAuthState } from '@/lib/auth'
+import { isAuthenticated, subscribe, getSnapshot } from '@/lib/auth'
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
 
 export function useAuth() {
+  const auth = useSyncExternalStore(subscribe, getSnapshot)
   const [status, setStatus] = useState<AuthStatus>('loading')
 
   useEffect(() => {
@@ -17,5 +18,5 @@ export function useAuth() {
     })
   }, [])
 
-  return { status, user: getAuthState() }
+  return { status, user: auth }
 }

@@ -26,11 +26,12 @@ import (
 )
 
 type Options struct {
-	Host        string `doc:"Host to listen on" default:"0.0.0.0"`
-	Port        int    `doc:"Port to listen on" short:"p" default:"8888"`
-	DatabaseURL string `doc:"PostgreSQL connection URL" default:"postgres://gatie:gatie@localhost:5432/gatie?sslmode=disable"`
-	ValkeyURL   string `doc:"Valkey connection URL" default:"valkey://localhost:6379"`
-	JWTSecret   string `doc:"JWT signing secret (auto-generated if empty)" default:""`
+	Host           string `doc:"Host to listen on" default:"0.0.0.0"`
+	Port           int    `doc:"Port to listen on" short:"p" default:"8888"`
+	DatabaseURL    string `doc:"PostgreSQL connection URL" default:"postgres://gatie:gatie@localhost:5432/gatie?sslmode=disable"`
+	ValkeyURL      string `doc:"Valkey connection URL" default:"valkey://localhost:6379"`
+	JWTSecret      string `doc:"JWT signing secret (auto-generated if empty)" default:""`
+	TrustedProxies string `doc:"Comma-separated trusted proxy IPs/CIDRs (e.g. 172.18.0.0/16,127.0.0.1)" default:""`
 }
 
 func main() {
@@ -56,7 +57,10 @@ func main() {
 		jwtSecret := opts.JWTSecret
 		if jwtSecret == "" {
 			b := make([]byte, 32)
-			rand.Read(b)
+			if _, err := rand.Read(b); err != nil {
+				slog.Error("failed to generate JWT secret", "error", err)
+				os.Exit(1)
+			}
 			jwtSecret = hex.EncodeToString(b)
 			slog.Warn("JWT secret auto-generated, set SERVICE_JWT_SECRET for persistent sessions across restarts")
 		}
@@ -64,15 +68,22 @@ func main() {
 		jwtManager := auth.NewJWTManager(jwtSecret, 15*time.Minute, 7*24*time.Hour)
 
 		router := chi.NewMux()
+		router.Use(middleware.NewChiBodyLimit(1 << 20)) // 1 MB
 		config := huma.DefaultConfig("GATIE", "1.0.0")
 		config.Transformers = append(config.Transformers, middleware.ErrorCaptureTransformer)
 		api := humachi.New(router, config)
 		api.UseMiddleware(middleware.NewRecover(api))
 		api.UseMiddleware(middleware.NewRequestLogger())
 
+		trustedProxies, err := middleware.ParseTrustedProxies(opts.TrustedProxies)
+		if err != nil {
+			slog.Error("invalid trusted proxies config", "error", err)
+			os.Exit(1)
+		}
+
 		authMW := middleware.NewAuthMiddleware(api, jwtManager)
 		adminMW := middleware.NewRequireAdmin(api)
-		authRateLimitMW := middleware.NewRateLimit(api, 0.5, 5)
+		authRateLimitMW := middleware.NewRateLimit(api, vkClient, trustedProxies, 5, 10*time.Second)
 
 		authService := service.NewAuthService(queries, dbpool, jwtManager)
 		authHandler := handler.NewAuthHandler(authService, authRateLimitMW)
@@ -80,7 +91,7 @@ func main() {
 		memberService := service.NewMemberService(queries, dbpool)
 		memberHandler := handler.NewMemberHandler(memberService, authMW, adminMW)
 
-		gateService := service.NewGateService(queries)
+		gateService := service.NewGateService(queries, dbpool)
 		gateHandler := handler.NewGateHandler(gateService, authMW, adminMW)
 
 		handler.RegisterHealth(api, dbpool, vkClient)

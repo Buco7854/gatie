@@ -29,7 +29,13 @@
     "usernameTaken": "Ce nom d'utilisateur est déjà pris"
   },
   "error": {
-    "generic": "Une erreur est survenue, veuillez réessayer."
+    "generic": "Une erreur est survenue, veuillez réessayer.",
+    "notFound": "Page introuvable",
+    "notFoundHint": "La page que vous cherchez n'existe pas.",
+    "backHome": "Retour à l'accueil",
+    "boundary": "Une erreur est survenue",
+    "boundaryHint": "Une erreur inattendue s'est produite. Veuillez recharger la page.",
+    "reload": "Recharger"
   },
   "action": {
     "cancel": "Annuler",

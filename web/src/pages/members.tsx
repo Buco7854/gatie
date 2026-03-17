@@ -3,18 +3,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react'
 import {
   PlusIcon,
   PencilSquareIcon,
   TrashIcon,
-  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/use-auth'
 import { apiFetch, ApiError } from '@/lib/api'
 import type { Member, MembersPage } from '@/lib/types'
 import { AppHeader } from '@/components/app-header'
+import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/ui/field'
@@ -400,7 +399,7 @@ export function MembersPage() {
                       </td>
                       <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">
                         {member.display_name ?? (
-                          <span className="italic text-zinc-300 dark:text-zinc-600">—</span>
+                          <span className="italic text-zinc-300 dark:text-zinc-600">&mdash;</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -423,60 +422,47 @@ export function MembersPage() {
       </main>
 
       {/* Create / Edit modal */}
-      <Dialog open={modal !== null} onClose={() => setModal(null)} className="relative z-50">
-        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm dark:bg-black/40" aria-hidden="true" />
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <DialogPanel className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-800">
-            <div className="mb-5 flex items-center justify-between">
-              <DialogTitle className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                {modal?.type === 'create' ? t('members.modalTitleCreate') : t('members.modalTitleEdit')}
-              </DialogTitle>
-              <button
-                onClick={() => setModal(null)}
-                className="cursor-pointer rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
-              >
-                <XMarkIcon className="size-4" aria-hidden="true" />
-              </button>
-            </div>
-
-            {modal?.type === 'create' && <CreateForm onSuccess={() => setModal(null)} />}
-            {modal?.type === 'edit' && (
-              <EditForm
-                member={modal.member}
-                isSelf={modal.member.id === currentUserId}
-                onSuccess={() => setModal(null)}
-              />
-            )}
-          </DialogPanel>
-        </div>
-      </Dialog>
+      <Modal
+        open={modal !== null}
+        onClose={() => setModal(null)}
+        title={modal?.type === 'create' ? t('members.modalTitleCreate') : t('members.modalTitleEdit')}
+      >
+        {modal?.type === 'create' && <CreateForm onSuccess={() => setModal(null)} />}
+        {modal?.type === 'edit' && (
+          <EditForm
+            member={modal.member}
+            isSelf={modal.member.id === currentUserId}
+            onSuccess={() => setModal(null)}
+          />
+        )}
+      </Modal>
 
       {/* Delete confirmation modal */}
-      <Dialog open={memberToDelete !== null} onClose={() => setMemberToDelete(null)} className="relative z-50">
-        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm dark:bg-black/40" aria-hidden="true" />
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <DialogPanel className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-800">
-            <DialogTitle className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-              {t('members.deleteTitle')}
-            </DialogTitle>
-            <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-              {t('members.deleteConfirm', { username: memberToDelete?.username })}
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setMemberToDelete(null)}>
-                {t('action.cancel')}
-              </Button>
-              <Button
-                variant="danger"
-                loading={deleteMutation.isPending}
-                onClick={() => memberToDelete && deleteMutation.mutate(memberToDelete.id)}
-              >
-                {t('action.delete')}
-              </Button>
-            </div>
-          </DialogPanel>
+      <Modal
+        open={memberToDelete !== null}
+        onClose={() => setMemberToDelete(null)}
+        title={t('members.deleteTitle')}
+        size="sm"
+      >
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          {t('members.deleteConfirm', { username: memberToDelete?.username })}
+        </p>
+        {deleteMutation.isError && (
+          <p className="mt-2 text-xs text-red-600 dark:text-red-400">{t('error.generic')}</p>
+        )}
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setMemberToDelete(null)}>
+            {t('action.cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            loading={deleteMutation.isPending}
+            onClick={() => memberToDelete && deleteMutation.mutate(memberToDelete.id)}
+          >
+            {t('action.delete')}
+          </Button>
         </div>
-      </Dialog>
+      </Modal>
     </div>
   )
 }

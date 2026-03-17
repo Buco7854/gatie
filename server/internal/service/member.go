@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gatie-io/gatie-server/internal/auth"
 	"github.com/gatie-io/gatie-server/internal/convert"
@@ -23,11 +22,11 @@ var (
 )
 
 type MemberService struct {
-	queries *postgres.Queries
-	pool    *pgxpool.Pool
+	queries postgres.Querier
+	pool    TxBeginner
 }
 
-func NewMemberService(queries *postgres.Queries, pool *pgxpool.Pool) *MemberService {
+func NewMemberService(queries postgres.Querier, pool TxBeginner) *MemberService {
 	return &MemberService{queries: queries, pool: pool}
 }
 
@@ -188,8 +187,8 @@ func (s *MemberService) DeleteMember(ctx context.Context, id string, callerID st
 		return fmt.Errorf("getting member: %w", err)
 	}
 
-	if row.Role == "ADMIN" {
-		adminCount, err := qtx.CountMembersByRoleForUpdate(ctx, "ADMIN")
+	if row.Role == RoleAdmin {
+		adminCount, err := qtx.CountMembersByRoleForUpdate(ctx, RoleAdmin)
 		if err != nil {
 			return fmt.Errorf("counting admins: %w", err)
 		}

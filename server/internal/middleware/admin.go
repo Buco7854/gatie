@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/gatie-io/gatie-server/internal/service"
 )
 
 func NewRequireAdmin(api huma.API) func(ctx huma.Context, next func(huma.Context)) {
@@ -15,7 +17,7 @@ func NewRequireAdmin(api huma.API) func(ctx huma.Context, next func(huma.Context
 			huma.WriteErr(api, ctx, http.StatusForbidden, "admin access required")
 			return
 		}
-		if claims.Role != "ADMIN" {
+		if claims.Role != service.RoleAdmin {
 			huma.WriteErr(api, ctx, http.StatusForbidden, "admin access required")
 			return
 		}

@@ -5,11 +5,30 @@ interface AuthState {
   role: string | null
 }
 
-const state: AuthState = {
+let state: AuthState = {
   accessToken: null,
   memberId: null,
   username: null,
   role: null,
+}
+
+const listeners = new Set<() => void>()
+
+function emitChange() {
+  // Create a new object so useSyncExternalStore detects the change
+  state = { ...state }
+  for (const listener of listeners) {
+    listener()
+  }
+}
+
+export function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
+export function getSnapshot(): AuthState {
+  return state
 }
 
 export function setAuth(data: {
@@ -22,6 +41,7 @@ export function setAuth(data: {
   state.memberId = data.member_id
   state.username = data.username
   state.role = data.role
+  emitChange()
 }
 
 export function clearAuth() {
@@ -29,14 +49,11 @@ export function clearAuth() {
   state.memberId = null
   state.username = null
   state.role = null
+  emitChange()
 }
 
 export function getAccessToken(): string | null {
   return state.accessToken
-}
-
-export function getAuthState(): Readonly<AuthState> {
-  return state
 }
 
 export function isAuthenticated(): boolean {

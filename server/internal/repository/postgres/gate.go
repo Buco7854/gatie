@@ -32,8 +32,9 @@ func (q *Queries) CreateGate(ctx context.Context, arg CreateGateParams) (Gate, e
 }
 
 func (q *Queries) DeleteGate(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, `DELETE FROM gates WHERE id = $1`, id)
-	return MapError(err)
+	row := q.db.QueryRow(ctx, `DELETE FROM gates WHERE id = $1 RETURNING id`, id)
+	var deleted pgtype.UUID
+	return MapError(row.Scan(&deleted))
 }
 
 func (q *Queries) GetGateByID(ctx context.Context, id pgtype.UUID) (Gate, error) {

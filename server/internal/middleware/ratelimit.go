@@ -1,93 +1,143 @@
 package middleware
 
 import (
+	"context"
+	"fmt"
+	"net"
 	"net/http"
-	"sync"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/valkey-io/valkey-go"
 )
 
-type visitor struct {
-	tokens   float64
-	lastSeen time.Time
+// TrustedProxies holds parsed CIDR networks used to identify trusted
+// reverse proxies when extracting the real client IP from X-Forwarded-For.
+type TrustedProxies struct {
+	nets []*net.IPNet
 }
 
-type rateLimiter struct {
-	mu       sync.Mutex
-	visitors map[string]*visitor
-	rate     float64 // tokens per second
-	burst    float64 // max tokens
+// ParseTrustedProxies parses a comma-separated list of IPs and CIDR ranges.
+// Single IPs are converted to /32 (IPv4) or /128 (IPv6).
+// Returns an empty TrustedProxies (trust nothing) if input is empty.
+func ParseTrustedProxies(raw string) (*TrustedProxies, error) {
+	tp := &TrustedProxies{}
+	if raw == "" {
+		return tp, nil
+	}
+
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		if !strings.Contains(entry, "/") {
+			ip := net.ParseIP(entry)
+			if ip == nil {
+				return nil, fmt.Errorf("invalid trusted proxy IP: %q", entry)
+			}
+			bits := 32
+			if ip.To4() == nil {
+				bits = 128
+			}
+			tp.nets = append(tp.nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			continue
+		}
+
+		_, cidr, err := net.ParseCIDR(entry)
+		if err != nil {
+			return nil, fmt.Errorf("invalid trusted proxy CIDR: %w", err)
+		}
+		tp.nets = append(tp.nets, cidr)
+	}
+
+	return tp, nil
 }
 
-func newRateLimiter(rate float64, burst int) *rateLimiter {
-	rl := &rateLimiter{
-		visitors: make(map[string]*visitor),
-		rate:     rate,
-		burst:    float64(burst),
-	}
-	go rl.cleanup()
-	return rl
-}
-
-func (rl *rateLimiter) allow(key string) bool {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
-	v, exists := rl.visitors[key]
-	now := time.Now()
-
-	if !exists {
-		rl.visitors[key] = &visitor{tokens: rl.burst - 1, lastSeen: now}
-		return true
-	}
-
-	elapsed := now.Sub(v.lastSeen).Seconds()
-	v.lastSeen = now
-	v.tokens += elapsed * rl.rate
-	if v.tokens > rl.burst {
-		v.tokens = rl.burst
-	}
-
-	if v.tokens < 1 {
+func (tp *TrustedProxies) isTrusted(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
 		return false
 	}
-
-	v.tokens--
-	return true
-}
-
-func (rl *rateLimiter) cleanup() {
-	for {
-		time.Sleep(5 * time.Minute)
-		rl.mu.Lock()
-		for key, v := range rl.visitors {
-			if time.Since(v.lastSeen) > 10*time.Minute {
-				delete(rl.visitors, key)
-			}
+	for _, n := range tp.nets {
+		if n.Contains(ip) {
+			return true
 		}
-		rl.mu.Unlock()
 	}
+	return false
 }
 
-func extractIP(ctx huma.Context) string {
-	if forwarded := ctx.Header("X-Forwarded-For"); forwarded != "" {
-		return forwarded
+// ExtractIP returns the real client IP from a request.
+// It walks X-Forwarded-For from right to left, skipping IPs that belong
+// to a trusted proxy network. The first non-trusted IP is the client.
+// If all IPs are trusted or the header is absent, falls back to RemoteAddr.
+func ExtractIP(ctx huma.Context, tp *TrustedProxies) string {
+	xff := ctx.Header("X-Forwarded-For")
+	if xff == "" || len(tp.nets) == 0 {
+		return stripPort(ctx.RemoteAddr())
 	}
-	return ctx.Host()
+
+	ips := strings.Split(xff, ",")
+	for i := len(ips) - 1; i >= 0; i-- {
+		ip := strings.TrimSpace(ips[i])
+		if !tp.isTrusted(ip) {
+			return ip
+		}
+	}
+
+	return stripPort(ctx.RemoteAddr())
 }
 
-// NewRateLimit returns a Huma middleware that rate-limits requests per IP.
-// rate: requests per second, burst: max burst size.
-func NewRateLimit(api huma.API, rate float64, burst int) func(huma.Context, func(huma.Context)) {
-	rl := newRateLimiter(rate, burst)
+func stripPort(addr string) string {
+	if i := strings.LastIndexByte(addr, ':'); i != -1 {
+		if strings.Contains(addr, "]") {
+			if bracket := strings.LastIndexByte(addr, ']'); bracket < i {
+				return addr[:i]
+			}
+			return addr
+		}
+		if strings.IndexByte(addr, ':') == i {
+			return addr[:i]
+		}
+	}
+	return addr
+}
 
+// NewRateLimit returns a Huma middleware that rate-limits requests per IP
+// using Valkey as backend. burst is the max number of requests allowed in
+// the given window duration.
+func NewRateLimit(api huma.API, vk valkey.Client, tp *TrustedProxies, burst int, window time.Duration) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		ip := extractIP(ctx)
-		if !rl.allow(ip) {
+		ip := ExtractIP(ctx, tp)
+		key := fmt.Sprintf("ratelimit:%s", ip)
+
+		allowed, err := checkRateLimit(ctx.Context(), vk, key, burst, window)
+		if err != nil {
+			next(ctx)
+			return
+		}
+		if !allowed {
 			huma.WriteErr(api, ctx, http.StatusTooManyRequests, "too many requests, try again later")
 			return
 		}
 		next(ctx)
 	}
+}
+
+// checkRateLimit implements a fixed window counter using Valkey INCR + EXPIRE.
+func checkRateLimit(ctx context.Context, vk valkey.Client, key string, burst int, window time.Duration) (bool, error) {
+	cmds := make(valkey.Commands, 0, 2)
+	cmds = append(cmds, vk.B().Incr().Key(key).Build())
+	cmds = append(cmds, vk.B().Expire().Key(key).Seconds(int64(window.Seconds())).Nx().Build())
+
+	results := vk.DoMulti(ctx, cmds...)
+
+	count, err := results[0].AsInt64()
+	if err != nil {
+		return false, fmt.Errorf("rate limit INCR: %w", err)
+	}
+
+	return count <= int64(burst), nil
 }

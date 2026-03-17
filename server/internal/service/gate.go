@@ -16,11 +16,12 @@ import (
 var ErrGateNotFound = errors.New("gate not found")
 
 type GateService struct {
-	queries *postgres.Queries
+	queries postgres.Querier
+	pool    TxBeginner
 }
 
-func NewGateService(queries *postgres.Queries) *GateService {
-	return &GateService{queries: queries}
+func NewGateService(queries postgres.Querier, pool TxBeginner) *GateService {
+	return &GateService{queries: queries, pool: pool}
 }
 
 type GatePage struct {
@@ -139,15 +140,13 @@ func (s *GateService) DeleteGate(ctx context.Context, id string) error {
 		return ErrInvalidID
 	}
 
-	_, err = s.queries.GetGateByID(ctx, uid)
-	if err != nil {
+	if err := s.queries.DeleteGate(ctx, uid); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrGateNotFound
 		}
-		return fmt.Errorf("getting gate: %w", err)
+		return fmt.Errorf("deleting gate: %w", err)
 	}
-
-	return s.queries.DeleteGate(ctx, uid)
+	return nil
 }
 
 func (s *GateService) RegenerateToken(ctx context.Context, id string) (*GateWithToken, error) {
@@ -156,7 +155,15 @@ func (s *GateService) RegenerateToken(ctx context.Context, id string) (*GateWith
 		return nil, ErrInvalidID
 	}
 
-	_, err = s.queries.GetGateByID(ctx, uid)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.queries.WithTx(tx)
+
+	_, err = qtx.GetGateByID(ctx, uid)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrGateNotFound
@@ -169,12 +176,16 @@ func (s *GateService) RegenerateToken(ctx context.Context, id string) (*GateWith
 		return nil, err
 	}
 
-	row, err := s.queries.UpdateGateToken(ctx, postgres.UpdateGateTokenParams{
+	row, err := qtx.UpdateGateToken(ctx, postgres.UpdateGateTokenParams{
 		ID:            uid,
 		GateTokenHash: hash,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("updating gate token: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("committing transaction: %w", err)
 	}
 
 	return &GateWithToken{Gate: toGate(row), Token: plainToken}, nil
