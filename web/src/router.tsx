@@ -6,9 +6,11 @@ import { LoginPage } from '@/pages/login'
 import { DashboardPage } from '@/pages/dashboard'
 import { MembersPage } from '@/pages/members'
 import { GatesPage } from '@/pages/gates'
+import { NotFoundPage } from '@/pages/not-found'
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
+  notFoundComponent: NotFoundPage,
 })
 
 // --- Public routes (no auth required) ---

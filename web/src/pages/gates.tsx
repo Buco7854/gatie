@@ -3,12 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react'
+import { DialogTitle } from '@headlessui/react'
 import {
   PlusIcon,
   PencilSquareIcon,
   TrashIcon,
-  XMarkIcon,
   ArrowPathIcon,
   ClipboardDocumentIcon,
   CheckIcon,
@@ -18,6 +17,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { apiFetch } from '@/lib/api'
 import type { Gate, GateWithToken, GatesPage } from '@/lib/types'
 import { AppHeader } from '@/components/app-header'
+import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/ui/field'
@@ -296,140 +296,89 @@ export function GatesPage() {
       </main>
 
       {/* Create modal */}
-      <Dialog open={modal?.type === 'create'} onClose={() => setModal(null)} className="relative z-50">
-        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm dark:bg-black/40" aria-hidden="true" />
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <DialogPanel className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-800">
-            <ModalHeader title={t('gates.modalTitleCreate')} onClose={() => setModal(null)} />
-            <GateForm
-              submitLabel={t('gates.create')}
-              onSubmit={(data) => createMutation.mutate(data)}
-              isPending={createMutation.isPending}
-              error={createMutation.isError}
-              onCancel={() => setModal(null)}
-            />
-          </DialogPanel>
-        </div>
-      </Dialog>
+      <Modal open={modal?.type === 'create'} onClose={() => setModal(null)} title={t('gates.modalTitleCreate')}>
+        <GateForm
+          submitLabel={t('gates.create')}
+          onSubmit={(data) => createMutation.mutate(data)}
+          isPending={createMutation.isPending}
+          error={createMutation.isError}
+          onCancel={() => setModal(null)}
+        />
+      </Modal>
 
       {/* Edit modal */}
-      <Dialog open={modal?.type === 'edit'} onClose={() => setModal(null)} className="relative z-50">
-        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm dark:bg-black/40" aria-hidden="true" />
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <DialogPanel className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-800">
-            <ModalHeader title={t('gates.modalTitleEdit')} onClose={() => setModal(null)} />
-            {modal?.type === 'edit' && (
-              <GateForm
-                defaultValues={{ name: modal.gate.name, status_ttl_seconds: modal.gate.status_ttl_seconds }}
-                submitLabel={t('action.save')}
-                onSubmit={(data) => updateMutation.mutate({ id: modal.gate.id, data })}
-                isPending={updateMutation.isPending}
-                error={updateMutation.isError}
-                onCancel={() => setModal(null)}
-              />
-            )}
-          </DialogPanel>
-        </div>
-      </Dialog>
+      <Modal open={modal?.type === 'edit'} onClose={() => setModal(null)} title={t('gates.modalTitleEdit')}>
+        {modal?.type === 'edit' && (
+          <GateForm
+            defaultValues={{ name: modal.gate.name, status_ttl_seconds: modal.gate.status_ttl_seconds }}
+            submitLabel={t('action.save')}
+            onSubmit={(data) => updateMutation.mutate({ id: modal.gate.id, data })}
+            isPending={updateMutation.isPending}
+            error={updateMutation.isError}
+            onCancel={() => setModal(null)}
+          />
+        )}
+      </Modal>
 
       {/* Token modal */}
-      <Dialog
-        open={modal?.type === 'token'}
-        onClose={() => setModal(null)}
-        className="relative z-50"
-      >
-        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm dark:bg-black/40" aria-hidden="true" />
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <DialogPanel className="w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-800">
-            <ModalHeader
-              title={t('gates.tokenTitle')}
-              onClose={() => setModal(null)}
-            />
-            {modal?.type === 'token' && (
-              <TokenReveal token={modal.token} onClose={() => setModal(null)} />
-            )}
-          </DialogPanel>
-        </div>
-      </Dialog>
+      <Modal open={modal?.type === 'token'} onClose={() => setModal(null)} title={t('gates.tokenTitle')} size="lg">
+        {modal?.type === 'token' && (
+          <TokenReveal token={modal.token} onClose={() => setModal(null)} />
+        )}
+      </Modal>
 
       {/* Regenerate confirm modal */}
-      <Dialog
+      <Modal
         open={modal?.type === 'regenerate-confirm'}
         onClose={() => setModal(null)}
-        className="relative z-50"
+        title={t('gates.tokenRegenerateConfirmTitle')}
+        size="sm"
       >
-        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm dark:bg-black/40" aria-hidden="true" />
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <DialogPanel className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-800">
-            <DialogTitle className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-              {t('gates.tokenRegenerateConfirmTitle')}
-            </DialogTitle>
-            <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-              {t('gates.tokenRegenerateConfirmBody')}
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setModal(null)}>
-                {t('action.cancel')}
-              </Button>
-              <Button
-                variant="danger"
-                loading={regenerateMutation.isPending}
-                onClick={() => modal?.type === 'regenerate-confirm' && regenerateMutation.mutate(modal.gate.id)}
-              >
-                {t('gates.tokenRegenerate')}
-              </Button>
-            </div>
-          </DialogPanel>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          {t('gates.tokenRegenerateConfirmBody')}
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setModal(null)}>
+            {t('action.cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            loading={regenerateMutation.isPending}
+            onClick={() => modal?.type === 'regenerate-confirm' && regenerateMutation.mutate(modal.gate.id)}
+          >
+            {t('gates.tokenRegenerate')}
+          </Button>
         </div>
-      </Dialog>
+      </Modal>
 
       {/* Delete confirm modal */}
-      <Dialog open={gateToDelete !== null} onClose={() => setGateToDelete(null)} className="relative z-50">
-        <div className="fixed inset-0 bg-black/25 backdrop-blur-sm dark:bg-black/40" aria-hidden="true" />
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <DialogPanel className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700/60 dark:bg-zinc-800">
-            <DialogTitle className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-              {t('gates.deleteTitle')}
-            </DialogTitle>
-            <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-              {t('gates.deleteConfirm', { name: gateToDelete?.name })}
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setGateToDelete(null)}>
-                {t('action.cancel')}
-              </Button>
-              <Button
-                variant="danger"
-                loading={deleteMutation.isPending}
-                onClick={() => gateToDelete && deleteMutation.mutate(gateToDelete.id)}
-              >
-                {t('action.delete')}
-              </Button>
-            </div>
-          </DialogPanel>
+      <Modal
+        open={gateToDelete !== null}
+        onClose={() => setGateToDelete(null)}
+        title={t('gates.deleteTitle')}
+        size="sm"
+      >
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          {t('gates.deleteConfirm', { name: gateToDelete?.name })}
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setGateToDelete(null)}>
+            {t('action.cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            loading={deleteMutation.isPending}
+            onClick={() => gateToDelete && deleteMutation.mutate(gateToDelete.id)}
+          >
+            {t('action.delete')}
+          </Button>
         </div>
-      </Dialog>
+      </Modal>
     </div>
   )
 }
 
 // --- Sub-components ---
-
-function ModalHeader({ title, onClose }: { title: string; onClose: () => void }) {
-  return (
-    <div className="mb-5 flex items-center justify-between">
-      <DialogTitle className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-        {title}
-      </DialogTitle>
-      <button
-        onClick={onClose}
-        className="cursor-pointer rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
-      >
-        <XMarkIcon className="size-4" aria-hidden="true" />
-      </button>
-    </div>
-  )
-}
 
 function GateActions({
   gate,
