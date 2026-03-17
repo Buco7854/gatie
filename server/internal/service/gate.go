@@ -7,9 +7,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/gatie-io/gatie-server/internal/auth"
 	"github.com/gatie-io/gatie-server/internal/convert"
 	"github.com/gatie-io/gatie-server/internal/repository"
@@ -20,10 +17,10 @@ var ErrGateNotFound = errors.New("gate not found")
 
 type GateService struct {
 	queries postgres.Querier
-	pool    interface{ Begin(context.Context) (pgx.Tx, error) }
+	pool    TxBeginner
 }
 
-func NewGateService(queries postgres.Querier, pool *pgxpool.Pool) *GateService {
+func NewGateService(queries postgres.Querier, pool TxBeginner) *GateService {
 	return &GateService{queries: queries, pool: pool}
 }
 

@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gatie-io/gatie-server/internal/auth"
 	"github.com/gatie-io/gatie-server/internal/convert"
@@ -25,10 +23,10 @@ var (
 
 type MemberService struct {
 	queries postgres.Querier
-	pool    interface{ Begin(context.Context) (pgx.Tx, error) }
+	pool    TxBeginner
 }
 
-func NewMemberService(queries postgres.Querier, pool *pgxpool.Pool) *MemberService {
+func NewMemberService(queries postgres.Querier, pool TxBeginner) *MemberService {
 	return &MemberService{queries: queries, pool: pool}
 }
 
