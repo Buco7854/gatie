@@ -31,7 +31,7 @@ type Options struct {
 	DatabaseURL    string `doc:"PostgreSQL connection URL" default:"postgres://gatie:gatie@localhost:5432/gatie?sslmode=disable"`
 	ValkeyURL      string `doc:"Valkey connection URL" default:"valkey://localhost:6379"`
 	JWTSecret      string `doc:"JWT signing secret (auto-generated if empty)" default:""`
-	TrustedProxies int    `doc:"Number of trusted reverse proxies (0 = direct access, 1 = Caddy)" default:"1"`
+	TrustedProxies string `doc:"Comma-separated trusted proxy IPs/CIDRs (e.g. 172.18.0.0/16,127.0.0.1)" default:"172.16.0.0/12,127.0.0.1,::1"`
 }
 
 func main() {
@@ -75,9 +75,15 @@ func main() {
 		api.UseMiddleware(middleware.NewRecover(api))
 		api.UseMiddleware(middleware.NewRequestLogger())
 
+		trustedProxies, err := middleware.ParseTrustedProxies(opts.TrustedProxies)
+		if err != nil {
+			slog.Error("invalid trusted proxies config", "error", err)
+			os.Exit(1)
+		}
+
 		authMW := middleware.NewAuthMiddleware(api, jwtManager)
 		adminMW := middleware.NewRequireAdmin(api)
-		authRateLimitMW := middleware.NewRateLimit(api, vkClient, opts.TrustedProxies, 5, 10*time.Second)
+		authRateLimitMW := middleware.NewRateLimit(api, vkClient, trustedProxies, 5, 10*time.Second)
 
 		authService := service.NewAuthService(queries, dbpool, jwtManager)
 		authHandler := handler.NewAuthHandler(authService, authRateLimitMW)

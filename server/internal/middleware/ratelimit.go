@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -11,45 +12,93 @@ import (
 	"github.com/valkey-io/valkey-go"
 )
 
-// ExtractIP returns the client IP from a request, taking into account
-// the number of trusted reverse proxies in front of the server.
-//
-// With trustedProxies=1 (e.g. Caddy), the rightmost IP in X-Forwarded-For
-// is the one added by the trusted proxy = the real client IP.
-// With trustedProxies=0 (direct access), X-Forwarded-For is ignored entirely.
-func ExtractIP(ctx huma.Context, trustedProxies int) string {
-	if trustedProxies <= 0 {
-		return stripPort(ctx.RemoteAddr())
+// TrustedProxies holds parsed CIDR networks used to identify trusted
+// reverse proxies when extracting the real client IP from X-Forwarded-For.
+type TrustedProxies struct {
+	nets []*net.IPNet
+}
+
+// ParseTrustedProxies parses a comma-separated list of IPs and CIDR ranges.
+// Single IPs are converted to /32 (IPv4) or /128 (IPv6).
+// Returns an empty TrustedProxies (trust nothing) if input is empty.
+func ParseTrustedProxies(raw string) (*TrustedProxies, error) {
+	tp := &TrustedProxies{}
+	if raw == "" {
+		return tp, nil
 	}
 
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		if !strings.Contains(entry, "/") {
+			ip := net.ParseIP(entry)
+			if ip == nil {
+				return nil, fmt.Errorf("invalid trusted proxy IP: %q", entry)
+			}
+			bits := 32
+			if ip.To4() == nil {
+				bits = 128
+			}
+			tp.nets = append(tp.nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			continue
+		}
+
+		_, cidr, err := net.ParseCIDR(entry)
+		if err != nil {
+			return nil, fmt.Errorf("invalid trusted proxy CIDR: %w", err)
+		}
+		tp.nets = append(tp.nets, cidr)
+	}
+
+	return tp, nil
+}
+
+func (tp *TrustedProxies) isTrusted(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	for _, n := range tp.nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// ExtractIP returns the real client IP from a request.
+// It walks X-Forwarded-For from right to left, skipping IPs that belong
+// to a trusted proxy network. The first non-trusted IP is the client.
+// If all IPs are trusted or the header is absent, falls back to RemoteAddr.
+func ExtractIP(ctx huma.Context, tp *TrustedProxies) string {
 	xff := ctx.Header("X-Forwarded-For")
-	if xff == "" {
+	if xff == "" || len(tp.nets) == 0 {
 		return stripPort(ctx.RemoteAddr())
 	}
 
 	ips := strings.Split(xff, ",")
-	// The trusted proxy at position N (from the right) added the client IP.
-	// With 1 trusted proxy: we want ips[len-1] (the IP Caddy appended).
-	idx := len(ips) - trustedProxies
-	if idx < 0 {
-		return stripPort(ctx.RemoteAddr())
+	for i := len(ips) - 1; i >= 0; i-- {
+		ip := strings.TrimSpace(ips[i])
+		if !tp.isTrusted(ip) {
+			return ip
+		}
 	}
 
-	return strings.TrimSpace(ips[idx])
+	return stripPort(ctx.RemoteAddr())
 }
 
 func stripPort(addr string) string {
 	if i := strings.LastIndexByte(addr, ':'); i != -1 {
-		// Avoid stripping IPv6 colons — only strip if there's a bracket or no other colon.
 		if strings.Contains(addr, "]") {
-			// [::1]:8080 → [::1]
 			if bracket := strings.LastIndexByte(addr, ']'); bracket < i {
 				return addr[:i]
 			}
 			return addr
 		}
 		if strings.IndexByte(addr, ':') == i {
-			// Only one colon → IPv4:port
 			return addr[:i]
 		}
 	}
@@ -59,9 +108,9 @@ func stripPort(addr string) string {
 // NewRateLimit returns a Huma middleware that rate-limits requests per IP
 // using Valkey as backend. burst is the max number of requests allowed in
 // the given window duration.
-func NewRateLimit(api huma.API, vk valkey.Client, trustedProxies int, burst int, window time.Duration) func(huma.Context, func(huma.Context)) {
+func NewRateLimit(api huma.API, vk valkey.Client, tp *TrustedProxies, burst int, window time.Duration) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		ip := ExtractIP(ctx, trustedProxies)
+		ip := ExtractIP(ctx, tp)
 		key := fmt.Sprintf("ratelimit:%s", ip)
 
 		allowed, err := checkRateLimit(ctx.Context(), vk, key, burst, window)
