@@ -31,7 +31,7 @@ type Options struct {
 	DatabaseURL    string `doc:"PostgreSQL connection URL" default:"postgres://gatie:gatie@localhost:5432/gatie?sslmode=disable"`
 	ValkeyURL      string `doc:"Valkey connection URL" default:"valkey://localhost:6379"`
 	JWTSecret      string `doc:"JWT signing secret (auto-generated if empty)" default:""`
-	TrustedProxies string `doc:"Comma-separated trusted proxy IPs/CIDRs (e.g. 172.18.0.0/16,127.0.0.1)" default:"172.16.0.0/12,127.0.0.1,::1"`
+	TrustedProxies string `doc:"Comma-separated trusted proxy IPs/CIDRs (e.g. 172.18.0.0/16,127.0.0.1)" default:""`
 }
 
 func main() {
