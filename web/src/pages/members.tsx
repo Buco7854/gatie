@@ -10,7 +10,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/hooks/use-auth'
-import { ApiError, membersApi } from '@/lib/api'
+import { ApiError, membersApi, rolesApi } from '@/lib/api'
 import type { Member } from '@/lib/types'
 import { AppHeader } from '@/components/app-header'
 import { Modal } from '@/components/ui/modal'
@@ -28,13 +28,13 @@ const createSchema = z.object({
   username: z.string().min(3).max(100),
   display_name: z.string().max(200).optional(),
   password: z.string().min(8).max(128),
-  role: z.enum(['ADMIN', 'MEMBER']),
+  role: z.string().min(1),
 })
 
 const updateSchema = z.object({
   username: z.string().min(3).max(100),
   display_name: z.string().max(200).optional(),
-  role: z.enum(['ADMIN', 'MEMBER']),
+  role: z.string().min(1),
 })
 
 type CreateFormData = z.infer<typeof createSchema>
@@ -42,18 +42,27 @@ type UpdateFormData = z.infer<typeof updateSchema>
 
 // --- Role badge ---
 
-function RoleBadge({ role }: { role: Member['role'] }) {
+const roleBadgeStyles: Record<string, string> = {
+  ADMIN: 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/60 dark:text-amber-400 dark:ring-amber-400/20',
+  MANAGER: 'bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-950/60 dark:text-blue-400 dark:ring-blue-400/20',
+  MEMBER: 'bg-zinc-100 text-zinc-600 ring-zinc-500/20 dark:bg-zinc-700 dark:text-zinc-400 dark:ring-zinc-600/30',
+  VIEWER: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/60 dark:text-emerald-400 dark:ring-emerald-400/20',
+}
+
+const defaultBadgeStyle = 'bg-violet-50 text-violet-700 ring-violet-600/20 dark:bg-violet-950/60 dark:text-violet-400 dark:ring-violet-400/20'
+
+function RoleBadge({ role }: { role: string }) {
   const { t } = useTranslation()
+  const key = `role.${role.toLowerCase()}`
+  const label = t(key) === key ? role : t(key)
   return (
     <span
       className={clsx(
         'inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset',
-        role === 'ADMIN'
-          ? 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950/60 dark:text-amber-400 dark:ring-amber-400/20'
-          : 'bg-zinc-100 text-zinc-600 ring-zinc-500/20 dark:bg-zinc-700 dark:text-zinc-400 dark:ring-zinc-600/30',
+        roleBadgeStyles[role] ?? defaultBadgeStyle,
       )}
     >
-      {t(`role.${role.toLowerCase()}`)}
+      {label}
     </span>
   )
 }
@@ -95,10 +104,23 @@ function ActionButtons({ member, isSelf, setModal, setMemberToDelete }: ActionBu
 
 function useRoleOptions() {
   const { t } = useTranslation()
-  return [
-    { value: 'MEMBER', label: t('role.member') },
-    { value: 'ADMIN', label: t('role.admin') },
-  ]
+  const { data: roles } = useQuery({
+    queryKey: ['roles'],
+    queryFn: () => rolesApi.listRoles(),
+  })
+
+  if (!roles) {
+    return [
+      { value: 'MEMBER', label: t('role.member') },
+      { value: 'ADMIN', label: t('role.admin') },
+    ]
+  }
+
+  return roles.map((r) => {
+    const key = `role.${r.id.toLowerCase()}`
+    const label = t(key) === key ? r.id : t(key)
+    return { value: r.id, label }
+  })
 }
 
 // --- Create form ---

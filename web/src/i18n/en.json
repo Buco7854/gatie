@@ -8,11 +8,14 @@
   "nav": {
     "gates": "Gates",
     "members": "Members",
+    "roles": "Roles",
     "logout": "Sign out"
   },
   "role": {
     "admin": "Admin",
-    "member": "Member"
+    "manager": "Manager",
+    "member": "Member",
+    "viewer": "Viewer"
   },
   "field": {
     "username": "Username",
@@ -97,6 +100,43 @@
     "fieldNamePlaceholder": "Main gate",
     "fieldStatusTTL": "Status TTL (seconds)",
     "fieldStatusTTLHint": "How long the last received status remains valid. After this delay, the gate is considered offline."
+  },
+  "roles": {
+    "title": "Roles",
+    "count": "{{count}} role(s)",
+    "add": "Add",
+    "create": "Create role",
+    "empty": "No roles",
+    "modalTitleCreate": "New role",
+    "modalTitleEdit": "Edit role",
+    "modalTitlePermissions": "Role permissions",
+    "deleteTitle": "Delete role",
+    "deleteConfirm": "Are you sure you want to delete the role \"{{role}}\"?",
+    "protected": "(protected)",
+    "managePermissions": "Manage permissions",
+    "permissionsHint": "Select permissions for the {{role}} role.",
+    "fieldId": "ID",
+    "fieldDescription": "Description",
+    "descriptionPlaceholder": "Can open and close gates...",
+    "alreadyExists": "This role already exists",
+    "inUseError": "This role is in use and cannot be deleted."
+  },
+  "permissions": {
+    "title": "Permissions",
+    "count": "{{count}} permission(s)",
+    "add": "Add",
+    "create": "Create permission",
+    "empty": "No permissions",
+    "modalTitleCreate": "New permission",
+    "modalTitleEdit": "Edit permission",
+    "deleteTitle": "Delete permission",
+    "deleteConfirm": "Are you sure you want to delete the permission \"{{permission}}\"?",
+    "protected": "(protected)",
+    "fieldId": "ID",
+    "fieldDescription": "Description",
+    "descriptionPlaceholder": "Allows viewing logs...",
+    "alreadyExists": "This permission already exists",
+    "inUseError": "This permission is in use and cannot be deleted."
   },
   "pagination": {
     "page": "Page {{page}} of {{total}}"

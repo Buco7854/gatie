@@ -71,3 +71,42 @@ type CreateRefreshTokenParams struct {
 	TokenHash string
 	ExpiresAt time.Time
 }
+
+type Role struct {
+	ID          string
+	Description string
+	Permissions []string
+}
+
+type Permission struct {
+	ID          string
+	Description string
+}
+
+type GateMembership struct {
+	GateID    string
+	MemberID  string
+	RoleID    string
+	CreatedAt time.Time
+}
+
+type GateMembershipWithMember struct {
+	GateID      string
+	MemberID    string
+	Username    string
+	DisplayName *string
+	RoleID      string
+	CreatedAt   time.Time
+}
+
+type CreateGateMembershipParams struct {
+	GateID   string
+	MemberID string
+	RoleID   string
+}
+
+type UpdateGateMembershipParams struct {
+	GateID   string
+	MemberID string
+	RoleID   string
+}

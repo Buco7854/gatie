@@ -11,6 +11,9 @@ import (
 )
 
 type AuthRepository interface {
+	BeginTx(ctx context.Context) (AuthRepository, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
 	CountMembers(ctx context.Context) (int64, error)
 	CreateMember(ctx context.Context, arg repository.CreateMemberParams) (repository.Member, error)
 	GetMemberByUsername(ctx context.Context, username string) (repository.Member, error)
@@ -21,9 +24,8 @@ type AuthRepository interface {
 }
 
 type AuthService struct {
-	repo    AuthRepository
-	jwt     *auth.JWTManager
-	beginTx func(ctx context.Context) (AuthRepository, Tx, error)
+	repo AuthRepository
+	jwt  *auth.JWTManager
 }
 
 var (
@@ -33,8 +35,8 @@ var (
 	ErrRefreshTokenExpired   = errors.New("refresh token expired")
 )
 
-func NewAuthService(repo AuthRepository, jwt *auth.JWTManager, beginTx func(ctx context.Context) (AuthRepository, Tx, error)) *AuthService {
-	return &AuthService{repo: repo, jwt: jwt, beginTx: beginTx}
+func NewAuthService(repo AuthRepository, jwt *auth.JWTManager) *AuthService {
+	return &AuthService{repo: repo, jwt: jwt}
 }
 
 type SetupInput struct {
@@ -103,18 +105,18 @@ func (s *AuthService) Login(ctx context.Context, input LoginInput) (*AuthResult,
 func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*AuthResult, error) {
 	tokenHash := auth.HashToken(rawToken)
 
-	qtx, tx, err := s.beginTx(ctx)
+	tx, err := s.repo.BeginTx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("beginning transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	rt, err := qtx.GetRefreshTokenByHash(ctx, tokenHash)
+	rt, err := tx.GetRefreshTokenByHash(ctx, tokenHash)
 	if err != nil {
 		return nil, ErrInvalidRefreshToken
 	}
 
-	if err := qtx.DeleteRefreshToken(ctx, rt.ID); err != nil {
+	if err := tx.DeleteRefreshToken(ctx, rt.ID); err != nil {
 		return nil, fmt.Errorf("revoking old token: %w", err)
 	}
 
@@ -123,7 +125,7 @@ func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*AuthResult
 		return nil, ErrRefreshTokenExpired
 	}
 
-	row, err := qtx.GetMemberByID(ctx, rt.MemberID)
+	row, err := tx.GetMemberByID(ctx, rt.MemberID)
 	if err != nil {
 		return nil, fmt.Errorf("getting member for refresh: %w", err)
 	}
@@ -142,7 +144,7 @@ func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*AuthResult
 	refreshHash := auth.HashToken(rawRefresh)
 	expiresAt := time.Now().Add(s.jwt.RefreshDuration())
 
-	_, err = qtx.CreateRefreshToken(ctx, repository.CreateRefreshTokenParams{
+	_, err = tx.CreateRefreshToken(ctx, repository.CreateRefreshTokenParams{
 		MemberID:  rt.MemberID,
 		TokenHash: refreshHash,
 		ExpiresAt: expiresAt,

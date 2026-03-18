@@ -10,7 +10,7 @@ export interface Member {
   id: string
   username: string
   display_name?: string
-  role: 'ADMIN' | 'MEMBER'
+  role: string
   created_at: string
   updated_at: string
 }
@@ -39,4 +39,15 @@ export interface GatesPage {
   total: number
   page: number
   per_page: number
+}
+
+export interface Role {
+  id: string
+  description: string
+  permissions: string[]
+}
+
+export interface Permission {
+  id: string
+  description: string
 }

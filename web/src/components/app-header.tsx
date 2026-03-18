@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import type { LinkProps } from '@tanstack/react-router'
-import { UsersIcon, ArrowRightOnRectangleIcon, HomeModernIcon } from '@heroicons/react/24/outline'
+import { UsersIcon, ArrowRightOnRectangleIcon, HomeModernIcon, ShieldCheckIcon } from '@heroicons/react/24/outline'
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -54,6 +54,10 @@ export function AppHeader() {
             <NavLink to="/members">
               <UsersIcon className="size-4 shrink-0" aria-hidden="true" />
               <span className="hidden sm:inline">{t('nav.members')}</span>
+            </NavLink>
+            <NavLink to="/roles">
+              <ShieldCheckIcon className="size-4 shrink-0" aria-hidden="true" />
+              <span className="hidden sm:inline">{t('nav.roles')}</span>
             </NavLink>
           </nav>
         )}

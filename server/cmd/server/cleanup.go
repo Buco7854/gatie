@@ -8,7 +8,7 @@ import (
 	"github.com/gatie-io/gatie-server/internal/repository/postgres"
 )
 
-func runTokenCleanup(ctx context.Context, repo *postgres.Repository) {
+func runTokenCleanup(ctx context.Context, repo *postgres.AuthRepository) {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 

@@ -1,65 +1,87 @@
 # GATIE — Avancement
 
-## Décision architecture — RBAC (2026-03-16)
+## Décision architecture — PBAC dynamique (2026-03-18)
 
-### Modèle d'accès retenu : Scoped RBAC à 3 niveaux
+### Modèle d'accès retenu : Permission-Based Access Control (PBAC)
 
-**Contexte :** un père déploie GATIE, veut que sa femme gère les PINs/plannings, et que son enfant puisse juste ouvrir. Avec seulement ADMIN/MEMBER, la femme devrait être ADMIN — trop large. D'où le rôle intermédiaire.
+**Contexte :** un père déploie GATIE, veut que sa femme gère les PINs/plannings, et que son enfant puisse juste ouvrir. Avec seulement ADMIN/MEMBER, la femme devrait être ADMIN — trop large. D'où les rôles intermédiaires.
 
-```
-ADMIN (global)
-  → tout : config serveur, gestion membres, portails, tokens MQTT, permissions
+Les rôles et permissions sont stockés dynamiquement en BDD (pas de booléens hardcodés). Le scope (global vs local) est défini implicitement par l'endroit où le rôle est assigné :
+- **Scope global** : rôle assigné dans `members.role_id`
+- **Scope local** : rôle assigné dans `gate_memberships.role_id`
 
-MANAGER (par portail)
-  → ouvrir / fermer / voir le statut
-  → créer/révoquer des PINs et codes d'accès
-  → gérer les plannings horaires du portail
-  → gérer qui a accès au portail (inviter/retirer des MEMBER)
+Les rôles/permissions sont **pré-remplis au démarrage** (upsert), non éditables par l'utilisateur. L'utilisateur peut uniquement **lister les rôles** (avec descriptions et permissions) pour les assigner.
 
-MEMBER (par portail)
-  → ouvrir / fermer / voir le statut uniquement
-```
+### Schéma BDD
 
-**Matrice hardcodée en code** (pas de `role_permissions` en BDD) — suffisant pour ce cas self-hosted.
-
-### Impact sur le schéma BDD
-
-La migration `004_create_permissions.sql` actuelle utilise des flags booléens (`can_open`, `can_close`, `can_view_status`, `can_manage`). **Elle doit être remplacée** par une colonne `role` enum.
-
-La prochaine migration doit :
 ```sql
--- Remplacer la table permissions par :
+-- Rôles disponibles (pré-remplis, lecture seule)
+CREATE TABLE roles (
+    id          VARCHAR PRIMARY KEY,  -- 'ADMIN', 'MANAGER', 'MEMBER', 'VIEWER'
+    description TEXT NOT NULL
+);
+
+-- Permissions disponibles (pré-remplis, lecture seule)
+CREATE TABLE permissions (
+    id          VARCHAR PRIMARY KEY,  -- 'gate:open', 'gate:manage_members', '*'
+    description TEXT NOT NULL
+);
+
+-- Association rôle → permissions (pré-rempli, lecture seule)
+CREATE TABLE role_permissions (
+    role_id       VARCHAR REFERENCES roles(id) ON DELETE CASCADE,
+    permission_id VARCHAR REFERENCES permissions(id) ON DELETE CASCADE,
+    PRIMARY KEY (role_id, permission_id)
+);
+
+-- Membres : rôle global via FK
+ALTER TABLE members ... role_id VARCHAR REFERENCES roles(id);
+
+-- Accès par portail : rôle local
 CREATE TABLE gate_memberships (
-    id         UUID PRIMARY KEY DEFAULT uuidv7(),
-    member_id  UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-    gate_id    UUID NOT NULL REFERENCES gates(id) ON DELETE CASCADE,
-    role       TEXT NOT NULL CHECK (role IN ('manager', 'member')),
-    granted_by UUID REFERENCES members(id) ON DELETE SET NULL,
+    gate_id   UUID REFERENCES gates(id) ON DELETE CASCADE,
+    member_id UUID REFERENCES members(id) ON DELETE CASCADE,
+    role_id   VARCHAR REFERENCES roles(id) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (member_id, gate_id)
+    PRIMARY KEY (gate_id, member_id)
 );
 ```
 
-> Note : les ADMIN n'ont pas d'entrée dans `gate_memberships` — leur accès est global, vérifié côté code.
+L'ancienne table `permissions` (booléens) est supprimée.
 
-### Logique d'autorisation (`can()`)
+### Rôles et permissions par défaut (seedés)
 
-```go
-func can(user, action, gate) bool {
-    if user.Role == "ADMIN" { return true }
+| Rôle | Permissions |
+|------|------------|
+| ADMIN | `*` (bypass toutes les vérifications) |
+| MANAGER | `gate:open`, `gate:close`, `gate:view_status`, `gate:configure`, `gate:manage_members` |
+| MEMBER | `gate:open`, `gate:close`, `gate:view_status` |
+| VIEWER | `gate:view_status` |
 
-    membership := getMembership(user.ID, gate.ID)
-    if membership == nil { return false }
+### Bootstrapping (upsert au démarrage)
 
-    switch action {
-    case "open", "close", "view_status":
-        return true // manager et member
-    case "manage_access", "manage_pins", "manage_schedules":
-        return membership.Role == "manager"
-    }
-    return false
-}
+Le backend lance un `EnsureDefaultRolesAndPermissions(ctx)` au démarrage qui fait des upserts. Si une future version ajoute une permission, le redémarrage la crée automatiquement. La migration seed l'état initial, le bootstrap maintient la cohérence.
+
+### Logique d'autorisation — `can(member, membership, permission)`
+
 ```
+1. Vérifier si le rôle global (member.role_id) possède la permission demandée (ou '*')
+   → Si oui : true
+2. Si non, vérifier si l'utilisateur a une entrée membership pour cette gate
+   → Si non : false
+3. Si oui, vérifier si le rôle local (membership.role_id) possède la permission demandée
+   → Retourner le résultat
+```
+
+> Note : les ADMIN n'ont pas besoin d'entrée dans `gate_memberships` — la permission `*` dans leur rôle global suffit.
+
+### Endpoints prévus
+
+- `GET /roles` — liste les rôles avec descriptions et permissions (lecture seule)
+- `GET /gates/{id}/members` — liste les membres d'une gate avec leur rôle local
+- `POST /gates/{id}/members` — ajouter un membre à une gate
+- `PATCH /gates/{id}/members/{member-id}` — changer le rôle d'un membre sur une gate
+- `DELETE /gates/{id}/members/{member-id}` — retirer un membre d'une gate
 
 ---
 

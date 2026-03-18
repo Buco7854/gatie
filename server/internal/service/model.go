@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"errors"
 	"time"
 )
@@ -10,11 +9,6 @@ var (
 	ErrInvalidID      = errors.New("invalid id format")
 	ErrNothingToUpdate = errors.New("no fields to update")
 )
-
-type Tx interface {
-	Commit(ctx context.Context) error
-	Rollback(ctx context.Context) error
-}
 
 type Member struct {
 	ID          string

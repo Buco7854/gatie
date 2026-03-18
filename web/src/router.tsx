@@ -6,6 +6,7 @@ import { LoginPage } from '@/pages/login'
 import { DashboardPage } from '@/pages/dashboard'
 import { MembersPage } from '@/pages/members'
 import { GatesPage } from '@/pages/gates'
+import { RolesPage } from '@/pages/roles'
 import { NotFoundPage } from '@/pages/not-found'
 
 const rootRoute = createRootRoute({
@@ -89,12 +90,18 @@ const gatesRoute = createRoute({
   component: GatesPage,
 })
 
+const rolesRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: '/roles',
+  component: RolesPage,
+})
+
 const routeTree = rootRoute.addChildren([
   setupRoute,
   loginRoute,
   authLayout.addChildren([
     dashboardRoute,
-    adminLayout.addChildren([membersRoute, gatesRoute]),
+    adminLayout.addChildren([membersRoute, gatesRoute, rolesRoute]),
   ]),
 ])
 

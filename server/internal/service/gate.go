@@ -12,6 +12,9 @@ import (
 )
 
 type GateRepository interface {
+	BeginTx(ctx context.Context) (GateRepository, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
 	CountGates(ctx context.Context) (int64, error)
 	ListGates(ctx context.Context, arg repository.ListParams) ([]repository.Gate, error)
 	GetGateByID(ctx context.Context, id string) (repository.Gate, error)
@@ -27,12 +30,11 @@ var (
 )
 
 type GateService struct {
-	repo    GateRepository
-	beginTx func(ctx context.Context) (GateRepository, Tx, error)
+	repo GateRepository
 }
 
-func NewGateService(repo GateRepository, beginTx func(ctx context.Context) (GateRepository, Tx, error)) *GateService {
-	return &GateService{repo: repo, beginTx: beginTx}
+func NewGateService(repo GateRepository) *GateService {
+	return &GateService{repo: repo}
 }
 
 type GatePage struct {
@@ -143,13 +145,13 @@ func (s *GateService) DeleteGate(ctx context.Context, id string) error {
 }
 
 func (s *GateService) RegenerateToken(ctx context.Context, id string) (*GateWithToken, error) {
-	qtx, tx, err := s.beginTx(ctx)
+	tx, err := s.repo.BeginTx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("starting transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	_, err = qtx.GetGateByID(ctx, id)
+	_, err = tx.GetGateByID(ctx, id)
 	if err != nil {
 		return nil, mapGateServiceError(err, "getting gate")
 	}
@@ -159,7 +161,7 @@ func (s *GateService) RegenerateToken(ctx context.Context, id string) (*GateWith
 		return nil, err
 	}
 
-	row, err := qtx.UpdateGateToken(ctx, repository.UpdateGateTokenParams{
+	row, err := tx.UpdateGateToken(ctx, repository.UpdateGateTokenParams{
 		ID:            id,
 		GateTokenHash: hash,
 	})

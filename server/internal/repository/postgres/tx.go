@@ -1,25 +1,12 @@
 package postgres
 
-import (
-	"context"
-
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/gatie-io/gatie-server/internal/service"
-)
+import "github.com/gatie-io/gatie-server/internal/service"
 
 var (
-	_ service.AuthRepository   = (*Repository)(nil)
-	_ service.MemberRepository = (*Repository)(nil)
-	_ service.GateRepository   = (*Repository)(nil)
+	_ service.AuthRepository           = (*AuthRepository)(nil)
+	_ service.MemberRepository         = (*MemberRepository)(nil)
+	_ service.GateRepository           = (*GateRepository)(nil)
+	_ service.RoleRepository           = (*RoleRepository)(nil)
+	_ service.GateMembershipRepository = (*GateMembershipRepository)(nil)
+	_ service.AuthorizationRepository  = (*AuthorizationRepository)(nil)
 )
-
-func NewTxFactory(pool *pgxpool.Pool) func(ctx context.Context) (*Repository, service.Tx, error) {
-	return func(ctx context.Context) (*Repository, service.Tx, error) {
-		tx, err := pool.Begin(ctx)
-		if err != nil {
-			return nil, nil, err
-		}
-		return NewRepository(tx), tx, nil
-	}
-}

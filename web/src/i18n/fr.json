@@ -8,11 +8,14 @@
   "nav": {
     "gates": "Portails",
     "members": "Membres",
+    "roles": "Rôles",
     "logout": "Déconnexion"
   },
   "role": {
     "admin": "Admin",
-    "member": "Membre"
+    "manager": "Gestionnaire",
+    "member": "Membre",
+    "viewer": "Observateur"
   },
   "field": {
     "username": "Nom d'utilisateur",
@@ -97,6 +100,43 @@
     "fieldNamePlaceholder": "Portail principal",
     "fieldStatusTTL": "TTL du statut (secondes)",
     "fieldStatusTTLHint": "Durée de validité du dernier statut reçu. Après ce délai, le portail est considéré hors ligne."
+  },
+  "roles": {
+    "title": "Rôles",
+    "count": "{{count}} rôle(s)",
+    "add": "Ajouter",
+    "create": "Créer le rôle",
+    "empty": "Aucun rôle",
+    "modalTitleCreate": "Nouveau rôle",
+    "modalTitleEdit": "Modifier le rôle",
+    "modalTitlePermissions": "Permissions du rôle",
+    "deleteTitle": "Supprimer le rôle",
+    "deleteConfirm": "Êtes-vous sûr de vouloir supprimer le rôle «\u00a0{{role}}\u00a0» ?",
+    "protected": "(protégé)",
+    "managePermissions": "Gérer les permissions",
+    "permissionsHint": "Sélectionnez les permissions pour le rôle {{role}}.",
+    "fieldId": "Identifiant",
+    "fieldDescription": "Description",
+    "descriptionPlaceholder": "Peut ouvrir et fermer les portails...",
+    "alreadyExists": "Ce rôle existe déjà",
+    "inUseError": "Ce rôle est utilisé et ne peut pas être supprimé."
+  },
+  "permissions": {
+    "title": "Permissions",
+    "count": "{{count}} permission(s)",
+    "add": "Ajouter",
+    "create": "Créer la permission",
+    "empty": "Aucune permission",
+    "modalTitleCreate": "Nouvelle permission",
+    "modalTitleEdit": "Modifier la permission",
+    "deleteTitle": "Supprimer la permission",
+    "deleteConfirm": "Êtes-vous sûr de vouloir supprimer la permission «\u00a0{{permission}}\u00a0» ?",
+    "protected": "(protégée)",
+    "fieldId": "Identifiant",
+    "fieldDescription": "Description",
+    "descriptionPlaceholder": "Permet de consulter les logs...",
+    "alreadyExists": "Cette permission existe déjà",
+    "inUseError": "Cette permission est utilisée et ne peut pas être supprimée."
   },
   "pagination": {
     "page": "Page {{page}} / {{total}}"

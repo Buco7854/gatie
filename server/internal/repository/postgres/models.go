@@ -7,7 +7,7 @@ type memberRow struct {
 	Username     string
 	DisplayName  pgtype.Text
 	PasswordHash string
-	Role         string
+	RoleID       string
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
 }
@@ -29,30 +29,9 @@ type refreshTokenRow struct {
 	CreatedAt pgtype.Timestamptz
 }
 
-type gateActionRow struct {
-	ID            pgtype.UUID
-	GateID        pgtype.UUID
-	ActionType    string
-	TransportType string
-	Config        []byte
-}
-
-type permissionRow struct {
-	ID            pgtype.UUID
-	MemberID      pgtype.UUID
-	GateID        pgtype.UUID
-	CanOpen       bool
-	CanClose      bool
-	CanViewStatus bool
-	CanManage     bool
-}
-
-type scheduleRow struct {
-	ID         pgtype.UUID
-	Name       string
-	Scope      string
-	OwnerID    pgtype.UUID
-	Expression []byte
-	CreatedAt  pgtype.Timestamptz
-	UpdatedAt  pgtype.Timestamptz
+type gateMembershipRow struct {
+	GateID    pgtype.UUID
+	MemberID  pgtype.UUID
+	RoleID    string
+	CreatedAt pgtype.Timestamptz
 }

@@ -67,7 +67,7 @@ type CreateMemberBodyInput struct {
 		Username    string  `json:"username" minLength:"3" maxLength:"100" doc:"Username"`
 		DisplayName *string `json:"display_name,omitempty" maxLength:"200" doc:"Display name"`
 		Password    string  `json:"password" minLength:"8" maxLength:"128" doc:"Password"`
-		Role        string  `json:"role" enum:"ADMIN,MEMBER" doc:"Role"`
+		Role        string  `json:"role" minLength:"1" maxLength:"20" doc:"Role ID"`
 	}
 }
 
@@ -76,7 +76,7 @@ type UpdateMemberInput struct {
 	Body     struct {
 		Username    *string                         `json:"username,omitempty" minLength:"3" maxLength:"100" doc:"Username"`
 		DisplayName model.OmittableNullable[string] `json:"display_name,omitempty" maxLength:"200" doc:"Display name"`
-		Role        *string                         `json:"role,omitempty" enum:"ADMIN,MEMBER" doc:"Role"`
+		Role        *string                         `json:"role,omitempty" maxLength:"20" doc:"Role ID"`
 	}
 }
 

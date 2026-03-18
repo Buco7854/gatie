@@ -2,10 +2,9 @@
 
 -- Missing indexes on foreign keys for JOIN performance
 CREATE INDEX idx_gate_actions_gate_id ON gate_actions(gate_id);
-CREATE INDEX idx_permissions_member_id ON permissions(member_id);
-CREATE INDEX idx_permissions_gate_id ON permissions(gate_id);
 
 -- Auto-update updated_at on row modification
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -13,6 +12,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 CREATE TRIGGER trg_members_updated_at
     BEFORE UPDATE ON members
@@ -26,6 +26,4 @@ CREATE TRIGGER trg_gates_updated_at
 DROP TRIGGER IF EXISTS trg_gates_updated_at ON gates;
 DROP TRIGGER IF EXISTS trg_members_updated_at ON members;
 DROP FUNCTION IF EXISTS set_updated_at();
-DROP INDEX IF EXISTS idx_permissions_gate_id;
-DROP INDEX IF EXISTS idx_permissions_member_id;
 DROP INDEX IF EXISTS idx_gate_actions_gate_id;

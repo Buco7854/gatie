@@ -9,7 +9,7 @@ export interface CreateMemberData {
   username: string
   display_name?: string
   password: string
-  role: 'ADMIN' | 'MEMBER'
+  role: string
 }
 
 export function createMember(data: CreateMemberData): Promise<Member> {
@@ -19,7 +19,7 @@ export function createMember(data: CreateMemberData): Promise<Member> {
 export interface UpdateMemberData {
   username: string
   display_name?: string | null
-  role: 'ADMIN' | 'MEMBER'
+  role: string
 }
 
 export function updateMember(id: string, data: UpdateMemberData): Promise<Member> {

@@ -16,11 +16,6 @@ type Claims struct {
 	Username string `json:"username"`
 }
 
-type TokenPair struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-}
-
 type JWTManager struct {
 	secret          []byte
 	accessDuration  time.Duration

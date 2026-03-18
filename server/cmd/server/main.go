@@ -52,7 +52,12 @@ func main() {
 			os.Exit(1)
 		}
 
-		repo := postgres.NewRepository(dbpool)
+		authRepo := postgres.NewAuthRepository(dbpool)
+		memberRepo := postgres.NewMemberRepository(dbpool)
+		gateRepo := postgres.NewGateRepository(dbpool)
+		roleRepo := postgres.NewRoleRepository(dbpool)
+		gateMembershipRepo := postgres.NewGateMembershipRepository(dbpool)
+		_ = postgres.NewAuthorizationRepository(dbpool) // used later when authorization middleware is wired
 
 		jwtSecret := opts.JWTSecret
 		if jwtSecret == "" {
@@ -85,27 +90,27 @@ func main() {
 		adminMW := middleware.NewRequireAdmin(api)
 		authRateLimitMW := middleware.NewRateLimit(api, vkClient, trustedProxies, 5, 10*time.Second)
 
-		beginTx := postgres.NewTxFactory(dbpool)
-
-		authService := service.NewAuthService(repo, jwtManager, func(ctx context.Context) (service.AuthRepository, service.Tx, error) {
-			return beginTx(ctx)
-		})
+		authService := service.NewAuthService(authRepo, jwtManager)
 		authHandler := handler.NewAuthHandler(authService, authRateLimitMW)
 
-		memberService := service.NewMemberService(repo, func(ctx context.Context) (service.MemberRepository, service.Tx, error) {
-			return beginTx(ctx)
-		})
+		memberService := service.NewMemberService(memberRepo)
 		memberHandler := handler.NewMemberHandler(memberService, authMW, adminMW)
 
-		gateService := service.NewGateService(repo, func(ctx context.Context) (service.GateRepository, service.Tx, error) {
-			return beginTx(ctx)
-		})
+		gateService := service.NewGateService(gateRepo)
 		gateHandler := handler.NewGateHandler(gateService, authMW, adminMW)
+
+		roleService := service.NewRoleService(roleRepo)
+		roleHandler := handler.NewRoleHandler(roleService, authMW, adminMW)
+
+		gateMembershipService := service.NewGateMembershipService(gateMembershipRepo)
+		gateMembershipHandler := handler.NewGateMembershipHandler(gateMembershipService, authMW, adminMW)
 
 		handler.RegisterHealth(api, dbpool, vkClient)
 		authHandler.Register(api)
 		memberHandler.Register(api)
 		gateHandler.Register(api)
+		roleHandler.Register(api)
+		gateMembershipHandler.Register(api)
 
 		server := &http.Server{
 			Addr:    fmt.Sprintf("%s:%d", opts.Host, opts.Port),
@@ -115,7 +120,7 @@ func main() {
 		cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 
 		hooks.OnStart(func() {
-			go runTokenCleanup(cleanupCtx, repo)
+			go runTokenCleanup(cleanupCtx, authRepo)
 			slog.Info("GATIE server starting", "host", opts.Host, "port", opts.Port)
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				slog.Error("server error", "error", err)
