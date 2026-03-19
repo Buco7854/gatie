@@ -12,8 +12,8 @@
 |----------|-------|
 | Critical | 1 |
 | High | 7 |
-| Medium | 6 |
-| Low | 6 |
+| Medium | 9 |
+| Low | 7 |
 
 Overall the codebase is well-structured with clean layer separation, consistent patterns, and good security fundamentals (bcrypt, SHA-256 token hashing, parameterized SQL, HttpOnly cookies). The issues below are real and actionable.
 
@@ -249,7 +249,31 @@ export function useAuth() {
 
 Or simpler: compute status directly from auth state after the initial refresh attempt.
 
-### 13b. Wrong i18n key for `status_ttl_seconds` validation
+### 13b. Rate limit key shared across all auth endpoints
+
+**File:** `server/internal/middleware/ratelimit.go:107`
+
+The rate limit key is `ratelimit:<ip>` with no endpoint discrimination. Login, setup, and refresh all use the same `authRateLimitMW` instance (wired in `main.go:95`). Hitting the login endpoint 5 times locks the user out of `/auth/refresh` too, causing unexpected session expiry.
+
+**Fix:** Include the endpoint path in the key: `fmt.Sprintf("ratelimit:%s:%s", ctx.URL().Path, ip)`.
+
+### 13c. `mapGateMembershipError` masks "gate not found" as "membership not found"
+
+**File:** `server/internal/service/gate_membership.go:159-168`
+
+`mapGateMembershipError` converts all `ErrNotFound` to `ErrGateMembershipNotFound`. But it's also called after `GetGateByID` lookups (line 56, 83), where "not found" means the **gate** doesn't exist. The handler's `ErrGateNotFound` case is dead code because the service never returns it.
+
+**Fix:** Use a separate error mapping for the gate lookup, or explicitly return `ErrGateNotFound` in `ListGateMembers`/`AddGateMember` when the gate doesn't exist.
+
+### 13d. `SetRolePermissions` returns 500 for non-existent role or permission
+
+**File:** `server/internal/service/role.go:139-177`
+
+The method doesn't validate that the role or permission IDs exist before the transaction. FK violations (pgcode `23503`) propagate as generic 500 errors because `mapError` only handles `23505`.
+
+**Fix:** Either validate upfront, or add FK violation handling in `mapError` (same as issue #3).
+
+### 13e. Wrong i18n key for `status_ttl_seconds` validation
 
 **File:** `web/src/pages/gates.tsx:135`
 
@@ -297,7 +321,15 @@ Per CLAUDE.md: "Boutons d'action: visibles au survol uniquement sur desktop." Bu
 
 **Fix:** Add `opacity-0 group-hover:opacity-100` or `invisible group-hover:visible` on desktop.
 
-### 18. Refresh token sent in JSON response body
+### 18. Pagination index direction mismatch
+
+**File:** `server/internal/database/migrations/008_add_missing_indexes_and_constraints.sql:7`
+
+Index `idx_gates_created_at` is `DESC` but `ListGates` query uses `ORDER BY created_at ASC`. PostgreSQL can reverse-scan a btree index, but it signals a design mismatch about intended sort order.
+
+**Fix:** Align the index direction with the query.
+
+### 19. Refresh token sent in JSON response body
 
 **File:** `server/internal/handler/auth.go:198`
 
