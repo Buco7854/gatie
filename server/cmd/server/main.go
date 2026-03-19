@@ -116,8 +116,11 @@ func main() {
 		gateMembershipHandler.Register(api)
 
 		server := &http.Server{
-			Addr:    fmt.Sprintf("%s:%d", opts.Host, opts.Port),
-			Handler: router,
+			Addr:              fmt.Sprintf("%s:%d", opts.Host, opts.Port),
+			Handler:           router,
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			IdleTimeout:       120 * time.Second,
 		}
 
 		cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
