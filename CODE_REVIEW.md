@@ -11,9 +11,9 @@
 | Severity | Count |
 |----------|-------|
 | Critical | 1 |
-| High | 6 |
-| Medium | 5 |
-| Low | 4 |
+| High | 7 |
+| Medium | 6 |
+| Low | 6 |
 
 Overall the codebase is well-structured with clean layer separation, consistent patterns, and good security fundamentals (bcrypt, SHA-256 token hashing, parameterized SQL, HttpOnly cookies). The issues below are real and actionable.
 
@@ -170,6 +170,20 @@ export function setAuth(data: { ... }) {
 
 Same for `clearAuth`.
 
+### 8. NavLink active class completely broken — replaces all base styles
+
+**File:** `web/src/components/app-header.tsx:19`
+
+```tsx
+activeProps={{ className: 'active' }}
+```
+
+`activeProps={{ className: 'active' }}` **replaces** the `className` prop when the link is active, rather than appending to it. The active link loses all base styles (padding, text color, flex layout) and only gets `class="active"`. The CSS selector `[&.active]:bg-zinc-200` in `navLinkClasses` never applies because the base classes are gone.
+
+**Impact:** Active nav link styling is visually broken for all admin users navigating between pages.
+
+**Fix:** Merge classes: `activeProps={{ className: navLinkClasses + ' active' }}` or use a function-based className approach.
+
 ---
 
 ## MEDIUM
@@ -235,6 +249,14 @@ export function useAuth() {
 
 Or simpler: compute status directly from auth state after the initial refresh attempt.
 
+### 13b. Wrong i18n key for `status_ttl_seconds` validation
+
+**File:** `web/src/pages/gates.tsx:135`
+
+The error message for `status_ttl_seconds` uses `t('validation.minLength', { min: 1 })` — but this is a number field, not a string length. Users see "minimum length 1" instead of "minimum value 1".
+
+**Fix:** Use a dedicated `t('validation.min', { min: 1 })` key describing numeric bounds.
+
 ---
 
 ## LOW
@@ -274,6 +296,24 @@ The pagination component renders even when `totalPages <= 1`. Shows "Page 1 of 1
 Per CLAUDE.md: "Boutons d'action: visibles au survol uniquement sur desktop." But the action buttons in the table rows are always visible, not hidden behind `group-hover`. Same issue in `gates.tsx`.
 
 **Fix:** Add `opacity-0 group-hover:opacity-100` or `invisible group-hover:visible` on desktop.
+
+### 18. Refresh token sent in JSON response body
+
+**File:** `server/internal/handler/auth.go:198`
+
+The `AuthTokenBody` includes `refresh_token` in the JSON response alongside the HttpOnly cookie. This defeats the purpose of the cookie: the refresh token is accessible to JavaScript (and any XSS). The frontend never reads this field from JSON — it relies on the cookie via `credentials: 'include'`.
+
+**Fix:** Remove `RefreshToken` from `AuthTokenBody` and from the JSON response. The cookie is sufficient.
+
+### 19. Spinner, Modal close button, and Pagination buttons missing aria labels
+
+**Files:** `web/src/components/ui/spinner.tsx`, `modal.tsx:30-34`, `pagination.tsx:22-30`
+
+- Spinner has no `role="status"` or screen-reader text
+- Modal X button has no `aria-label`
+- Prev/Next pagination buttons only contain `aria-hidden` icons with no label
+
+**Fix:** Add `role="status"` + sr-only text to Spinner; add `aria-label` to close/pagination buttons.
 
 ---
 
