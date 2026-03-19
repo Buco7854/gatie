@@ -108,7 +108,7 @@ func NewRateLimit(api huma.API, vk valkey.Client, tp *TrustedProxies, burst int,
 
 		allowed, err := checkRateLimit(ctx.Context(), vk, key, burst, window)
 		if err != nil {
-			next(ctx)
+			huma.WriteErr(api, ctx, http.StatusServiceUnavailable, "rate limiter unavailable")
 			return
 		}
 		if !allowed {

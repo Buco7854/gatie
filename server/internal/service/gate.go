@@ -12,9 +12,6 @@ import (
 )
 
 type GateRepository interface {
-	BeginTx(ctx context.Context) (GateRepository, error)
-	Commit(ctx context.Context) error
-	Rollback(ctx context.Context) error
 	CountGates(ctx context.Context) (int64, error)
 	ListGates(ctx context.Context, arg repository.ListParams) ([]repository.Gate, error)
 	GetGateByID(ctx context.Context, id string) (repository.Gate, error)
@@ -25,16 +22,18 @@ type GateRepository interface {
 }
 
 var (
-	ErrGateNotFound = errors.New("gate not found")
-	ErrInvalidTTL   = errors.New("status_ttl_seconds must be between 1 and 86400")
+	ErrGateNotFound   = errors.New("gate not found")
+	ErrGateNameExists = errors.New("a gate with this name already exists")
+	ErrInvalidTTL     = errors.New("status_ttl_seconds must be between 1 and 86400")
 )
 
 type GateService struct {
 	repo GateRepository
+	tx   repository.Transactor
 }
 
-func NewGateService(repo GateRepository) *GateService {
-	return &GateService{repo: repo}
+func NewGateService(repo GateRepository, tx repository.Transactor) *GateService {
+	return &GateService{repo: repo, tx: tx}
 }
 
 type GatePage struct {
@@ -105,6 +104,9 @@ func (s *GateService) CreateGate(ctx context.Context, input CreateGateInput) (*G
 		StatusTtlSeconds: input.StatusTTLSeconds,
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrConflict) {
+			return nil, ErrGateNameExists
+		}
 		return nil, fmt.Errorf("creating gate: %w", err)
 	}
 
@@ -145,35 +147,33 @@ func (s *GateService) DeleteGate(ctx context.Context, id string) error {
 }
 
 func (s *GateService) RegenerateToken(ctx context.Context, id string) (*GateWithToken, error) {
-	tx, err := s.repo.BeginTx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("starting transaction: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	_, err = tx.GetGateByID(ctx, id)
-	if err != nil {
-		return nil, mapGateServiceError(err, "getting gate")
-	}
-
 	plainToken, hash, err := generateToken()
 	if err != nil {
 		return nil, err
 	}
 
-	row, err := tx.UpdateGateToken(ctx, repository.UpdateGateTokenParams{
-		ID:            id,
-		GateTokenHash: hash,
+	var result *GateWithToken
+	err = s.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		_, err := s.repo.GetGateByID(txCtx, id)
+		if err != nil {
+			return mapGateServiceError(err, "getting gate")
+		}
+
+		row, err := s.repo.UpdateGateToken(txCtx, repository.UpdateGateTokenParams{
+			ID:            id,
+			GateTokenHash: hash,
+		})
+		if err != nil {
+			return fmt.Errorf("updating gate token: %w", err)
+		}
+
+		result = &GateWithToken{Gate: toGate(row), Token: plainToken}
+		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("updating gate token: %w", err)
+		return nil, err
 	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("committing transaction: %w", err)
-	}
-
-	return &GateWithToken{Gate: toGate(row), Token: plainToken}, nil
+	return result, nil
 }
 
 func generateToken() (plainToken, hash string, err error) {

@@ -93,6 +93,7 @@
     "tokenWarning": "Ce jeton ne sera plus affiché. Copiez-le maintenant et conservez-le en sécurité.",
     "tokenCopied": "Copié !",
     "tokenCopy": "Copier",
+    "tokenCopyFailed": "La copie a échoué. Sélectionnez et copiez manuellement le jeton.",
     "tokenRegenerate": "Regénérer le jeton",
     "tokenRegenerateConfirmTitle": "Regénérer le jeton ?",
     "tokenRegenerateConfirmBody": "L'ancien jeton sera immédiatement invalidé. Le portail devra être reconfiguré avec le nouveau jeton.",

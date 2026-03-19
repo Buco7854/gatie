@@ -44,11 +44,11 @@ type GateMemberBody struct {
 // --- Inputs ---
 
 type ListGateMembersInput struct {
-	GateID string `path:"gate-id" doc:"Gate UUID"`
+	GateID string `path:"gate-id" format:"uuid" doc:"Gate UUID"`
 }
 
 type AddGateMemberInput struct {
-	GateID string `path:"gate-id" doc:"Gate UUID"`
+	GateID string `path:"gate-id" format:"uuid" doc:"Gate UUID"`
 	Body   struct {
 		MemberID string `json:"member_id" format:"uuid" doc:"Member UUID"`
 		RoleID   string `json:"role_id" minLength:"1" maxLength:"20" doc:"Role ID to assign"`
@@ -56,16 +56,16 @@ type AddGateMemberInput struct {
 }
 
 type UpdateGateMemberInput struct {
-	GateID   string `path:"gate-id" doc:"Gate UUID"`
-	MemberID string `path:"member-id" doc:"Member UUID"`
+	GateID   string `path:"gate-id" format:"uuid" doc:"Gate UUID"`
+	MemberID string `path:"member-id" format:"uuid" doc:"Member UUID"`
 	Body     struct {
 		RoleID string `json:"role_id" minLength:"1" maxLength:"20" doc:"New role ID"`
 	}
 }
 
 type RemoveGateMemberInput struct {
-	GateID   string `path:"gate-id" doc:"Gate UUID"`
-	MemberID string `path:"member-id" doc:"Member UUID"`
+	GateID   string `path:"gate-id" format:"uuid" doc:"Gate UUID"`
+	MemberID string `path:"member-id" format:"uuid" doc:"Member UUID"`
 }
 
 // --- Outputs ---

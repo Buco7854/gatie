@@ -12,7 +12,7 @@ import (
 type GateMembershipRepository struct{ base }
 
 func NewGateMembershipRepository(pool *pgxpool.Pool) *GateMembershipRepository {
-	return &GateMembershipRepository{base{db: pool, pool: pool}}
+	return &GateMembershipRepository{base{pool: pool}}
 }
 
 func (r *GateMembershipRepository) ListGateMemberships(ctx context.Context, gateID string) ([]repository.GateMembershipWithMember, error) {
@@ -21,7 +21,7 @@ func (r *GateMembershipRepository) ListGateMemberships(ctx context.Context, gate
 		return nil, err
 	}
 
-	rows, err := r.db.Query(ctx,
+	rows, err := r.conn(ctx).Query(ctx,
 		`SELECT gm.gate_id, gm.member_id, m.username, m.display_name, gm.role_id, gm.created_at
 		FROM gate_memberships gm
 		JOIN members m ON m.id = gm.member_id
@@ -64,7 +64,7 @@ func (r *GateMembershipRepository) ListGateMemberships(ctx context.Context, gate
 }
 
 func (r *GateMembershipRepository) GetGateMembership(ctx context.Context, gateID, memberID string) (repository.GateMembership, error) {
-	return queryGateMembership(ctx, r.db, gateID, memberID)
+	return queryGateMembership(ctx, r.conn(ctx), gateID, memberID)
 }
 
 func (r *GateMembershipRepository) CreateGateMembership(ctx context.Context, arg repository.CreateGateMembershipParams) (repository.GateMembership, error) {
@@ -78,7 +78,7 @@ func (r *GateMembershipRepository) CreateGateMembership(ctx context.Context, arg
 	}
 
 	var gm gateMembershipRow
-	row := r.db.QueryRow(ctx,
+	row := r.conn(ctx).QueryRow(ctx,
 		`INSERT INTO gate_memberships (gate_id, member_id, role_id)
 		VALUES ($1, $2, $3)
 		RETURNING gate_id, member_id, role_id, created_at`,
@@ -106,7 +106,7 @@ func (r *GateMembershipRepository) UpdateGateMembership(ctx context.Context, arg
 	}
 
 	var gm gateMembershipRow
-	row := r.db.QueryRow(ctx,
+	row := r.conn(ctx).QueryRow(ctx,
 		`UPDATE gate_memberships SET role_id = $3
 		WHERE gate_id = $1 AND member_id = $2
 		RETURNING gate_id, member_id, role_id, created_at`,
@@ -133,7 +133,7 @@ func (r *GateMembershipRepository) DeleteGateMembership(ctx context.Context, gat
 		return err
 	}
 
-	row := r.db.QueryRow(ctx,
+	row := r.conn(ctx).QueryRow(ctx,
 		`DELETE FROM gate_memberships WHERE gate_id = $1 AND member_id = $2 RETURNING gate_id`,
 		gateUUID, memberUUID,
 	)
@@ -142,9 +142,9 @@ func (r *GateMembershipRepository) DeleteGateMembership(ctx context.Context, gat
 }
 
 func (r *GateMembershipRepository) GetGateByID(ctx context.Context, id string) (repository.Gate, error) {
-	return queryGateByID(ctx, r.db, id)
+	return queryGateByID(ctx, r.conn(ctx), id)
 }
 
 func (r *GateMembershipRepository) GetMemberByID(ctx context.Context, id string) (repository.Member, error) {
-	return queryMemberByID(ctx, r.db, id)
+	return queryMemberByID(ctx, r.conn(ctx), id)
 }

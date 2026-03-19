@@ -10,7 +10,7 @@ import {
   AdjustmentsHorizontalIcon,
 } from '@heroicons/react/24/outline'
 import { useTranslation } from 'react-i18next'
-import { rolesApi } from '@/lib/api'
+import { ApiError, rolesApi } from '@/lib/api'
 import type { Role, Permission } from '@/lib/types'
 import { AppHeader } from '@/components/app-header'
 import { Modal } from '@/components/ui/modal'
@@ -79,7 +79,7 @@ function RoleCreateForm({ onSuccess }: { onSuccess: () => void }) {
       onSuccess()
     },
     onError: (err: Error) => {
-      if (err.message.includes('already exists')) {
+      if (err instanceof ApiError && err.status === 409) {
         setError('id', { message: t('roles.alreadyExists') })
       }
     },
@@ -240,7 +240,7 @@ function PermissionCreateForm({ onSuccess }: { onSuccess: () => void }) {
       onSuccess()
     },
     onError: (err: Error) => {
-      if (err.message.includes('already exists')) {
+      if (err instanceof ApiError && err.status === 409) {
         setError('id', { message: t('permissions.alreadyExists') })
       }
     },
@@ -413,6 +413,7 @@ export function RolesPage() {
                                 onClick={() => setModal({ type: 'role-permissions', role })}
                                 className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
                                 title={t('roles.managePermissions')}
+                                aria-label={t('roles.managePermissions')}
                               >
                                 <AdjustmentsHorizontalIcon className="size-4" aria-hidden="true" />
                               </button>
@@ -420,6 +421,7 @@ export function RolesPage() {
                                 onClick={() => setModal({ type: 'edit-role', role })}
                                 className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
                                 title={t('action.edit')}
+                                aria-label={t('action.edit')}
                               >
                                 <PencilSquareIcon className="size-4" aria-hidden="true" />
                               </button>
@@ -427,6 +429,7 @@ export function RolesPage() {
                                 onClick={() => setRoleToDelete(role)}
                                 className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
                                 title={t('action.delete')}
+                                aria-label={t('action.delete')}
                               >
                                 <TrashIcon className="size-4" aria-hidden="true" />
                               </button>
@@ -502,6 +505,7 @@ export function RolesPage() {
                             onClick={() => setModal({ type: 'edit-permission', permission: perm })}
                             className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
                             title={t('action.edit')}
+                            aria-label={t('action.edit')}
                           >
                             <PencilSquareIcon className="size-4" aria-hidden="true" />
                           </button>
@@ -509,6 +513,7 @@ export function RolesPage() {
                             onClick={() => setPermToDelete(perm)}
                             className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
                             title={t('action.delete')}
+                            aria-label={t('action.delete')}
                           >
                             <TrashIcon className="size-4" aria-hidden="true" />
                           </button>
@@ -588,7 +593,7 @@ export function RolesPage() {
         </p>
         {deleteRoleMutation.isError && (
           <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-            {deleteRoleMutation.error.message.includes('in use')
+            {deleteRoleMutation.error instanceof ApiError && deleteRoleMutation.error.status === 422
               ? t('roles.inUseError')
               : t('error.generic')}
           </p>
@@ -617,7 +622,7 @@ export function RolesPage() {
         </p>
         {deletePermMutation.isError && (
           <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-            {deletePermMutation.error.message.includes('in use')
+            {deletePermMutation.error instanceof ApiError && deletePermMutation.error.status === 422
               ? t('permissions.inUseError')
               : t('error.generic')}
           </p>

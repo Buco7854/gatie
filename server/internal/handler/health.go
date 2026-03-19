@@ -45,7 +45,17 @@ func RegisterHealth(api huma.API, db *pgxpool.Pool, vk valkey.Client) {
 		}
 
 		if !healthy {
-			return nil, huma.NewError(http.StatusServiceUnavailable, "service unhealthy")
+			var details []error
+			for svc, status := range services {
+				if status != "ok" {
+					details = append(details, &huma.ErrorDetail{
+						Location: svc,
+						Message:  status,
+						Value:    status,
+					})
+				}
+			}
+			return nil, huma.NewError(http.StatusServiceUnavailable, "service unhealthy", details...)
 		}
 
 		return &HealthOutput{

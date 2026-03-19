@@ -10,9 +10,6 @@ import (
 )
 
 type MemberRepository interface {
-	BeginTx(ctx context.Context) (MemberRepository, error)
-	Commit(ctx context.Context) error
-	Rollback(ctx context.Context) error
 	CountMembers(ctx context.Context) (int64, error)
 	ListMembers(ctx context.Context, arg repository.ListParams) ([]repository.Member, error)
 	GetMemberByID(ctx context.Context, id string) (repository.Member, error)
@@ -32,10 +29,11 @@ var (
 
 type MemberService struct {
 	repo MemberRepository
+	tx   repository.Transactor
 }
 
-func NewMemberService(repo MemberRepository) *MemberService {
-	return &MemberService{repo: repo}
+func NewMemberService(repo MemberRepository, tx repository.Transactor) *MemberService {
+	return &MemberService{repo: repo, tx: tx}
 }
 
 type MemberPage struct {
@@ -164,32 +162,28 @@ func (s *MemberService) DeleteMember(ctx context.Context, id string, callerID st
 		return ErrSelfDelete
 	}
 
-	tx, err := s.repo.BeginTx(ctx)
-	if err != nil {
-		return fmt.Errorf("beginning transaction: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	row, err := tx.GetMemberByID(ctx, id)
-	if err != nil {
-		return mapMemberError(err, "getting member")
-	}
-
-	if row.Role == RoleAdmin {
-		adminCount, err := tx.CountMembersByRoleForUpdate(ctx, RoleAdmin)
+	return s.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		row, err := s.repo.GetMemberByID(txCtx, id)
 		if err != nil {
-			return fmt.Errorf("counting admins: %w", err)
+			return mapMemberError(err, "getting member")
 		}
-		if adminCount <= 1 {
-			return ErrLastAdmin
+
+		if row.Role == RoleAdmin {
+			adminCount, err := s.repo.CountMembersByRoleForUpdate(txCtx, RoleAdmin)
+			if err != nil {
+				return fmt.Errorf("counting admins: %w", err)
+			}
+			if adminCount <= 1 {
+				return ErrLastAdmin
+			}
 		}
-	}
 
-	if err := tx.DeleteMember(ctx, id); err != nil {
-		return fmt.Errorf("deleting member: %w", err)
-	}
+		if err := s.repo.DeleteMember(txCtx, id); err != nil {
+			return fmt.Errorf("deleting member: %w", err)
+		}
 
-	return tx.Commit(ctx)
+		return nil
+	})
 }
 
 func mapMemberError(err error, fallback string) error {

@@ -62,7 +62,7 @@ type ListGatesInput struct {
 }
 
 type GetGateInput struct {
-	GateID string `path:"gate-id" doc:"Gate UUID"`
+	GateID string `path:"gate-id" format:"uuid" doc:"Gate UUID"`
 }
 
 type CreateGateBodyInput struct {
@@ -73,7 +73,7 @@ type CreateGateBodyInput struct {
 }
 
 type UpdateGateInput struct {
-	GateID string `path:"gate-id" doc:"Gate UUID"`
+	GateID string `path:"gate-id" format:"uuid" doc:"Gate UUID"`
 	Body   struct {
 		Name             *string `json:"name,omitempty" minLength:"1" maxLength:"100" doc:"Gate name"`
 		StatusTTLSeconds *int32  `json:"status_ttl_seconds,omitempty" minimum:"1" maximum:"86400" doc:"Status TTL in seconds"`
@@ -81,11 +81,11 @@ type UpdateGateInput struct {
 }
 
 type DeleteGateInput struct {
-	GateID string `path:"gate-id" doc:"Gate UUID"`
+	GateID string `path:"gate-id" format:"uuid" doc:"Gate UUID"`
 }
 
 type RegenerateTokenInput struct {
-	GateID string `path:"gate-id" doc:"Gate UUID"`
+	GateID string `path:"gate-id" format:"uuid" doc:"Gate UUID"`
 }
 
 // --- Outputs ---
@@ -257,6 +257,8 @@ func mapGateError(err error, fallback string) error {
 		return huma.Error404NotFound("gate not found")
 	case errors.Is(err, service.ErrInvalidTTL):
 		return huma.Error422UnprocessableEntity(err.Error())
+	case errors.Is(err, service.ErrGateNameExists):
+		return huma.Error409Conflict("a gate with this name already exists")
 	case errors.Is(err, service.ErrNothingToUpdate):
 		return huma.Error422UnprocessableEntity("no fields to update")
 	default:

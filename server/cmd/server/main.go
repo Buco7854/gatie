@@ -38,7 +38,9 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 
 	cli := humacli.New(func(hooks humacli.Hooks, opts *Options) {
-		dbpool, err := pgxpool.New(context.Background(), opts.DatabaseURL)
+		dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer dbCancel()
+		dbpool, err := pgxpool.New(dbCtx, opts.DatabaseURL)
 		if err != nil {
 			slog.Error("unable to connect to database", "error", err)
 			os.Exit(1)
@@ -52,12 +54,14 @@ func main() {
 			os.Exit(1)
 		}
 
+		transactor := postgres.NewTransactor(dbpool)
 		authRepo := postgres.NewAuthRepository(dbpool)
 		memberRepo := postgres.NewMemberRepository(dbpool)
 		gateRepo := postgres.NewGateRepository(dbpool)
 		roleRepo := postgres.NewRoleRepository(dbpool)
 		gateMembershipRepo := postgres.NewGateMembershipRepository(dbpool)
-		_ = postgres.NewAuthorizationRepository(dbpool) // used later when authorization middleware is wired
+		authzRepo := postgres.NewAuthorizationRepository(dbpool)
+		_ = authzRepo // TODO: wire into authorization middleware
 
 		jwtSecret := opts.JWTSecret
 		if jwtSecret == "" {
@@ -90,16 +94,16 @@ func main() {
 		adminMW := middleware.NewRequireAdmin(api)
 		authRateLimitMW := middleware.NewRateLimit(api, vkClient, trustedProxies, 5, 10*time.Second)
 
-		authService := service.NewAuthService(authRepo, jwtManager)
+		authService := service.NewAuthService(authRepo, transactor, jwtManager)
 		authHandler := handler.NewAuthHandler(authService, authRateLimitMW)
 
-		memberService := service.NewMemberService(memberRepo)
+		memberService := service.NewMemberService(memberRepo, transactor)
 		memberHandler := handler.NewMemberHandler(memberService, authMW, adminMW)
 
-		gateService := service.NewGateService(gateRepo)
+		gateService := service.NewGateService(gateRepo, transactor)
 		gateHandler := handler.NewGateHandler(gateService, authMW, adminMW)
 
-		roleService := service.NewRoleService(roleRepo)
+		roleService := service.NewRoleService(roleRepo, transactor)
 		roleHandler := handler.NewRoleHandler(roleService, authMW, adminMW)
 
 		gateMembershipService := service.NewGateMembershipService(gateMembershipRepo)
@@ -113,8 +117,11 @@ func main() {
 		gateMembershipHandler.Register(api)
 
 		server := &http.Server{
-			Addr:    fmt.Sprintf("%s:%d", opts.Host, opts.Port),
-			Handler: router,
+			Addr:              fmt.Sprintf("%s:%d", opts.Host, opts.Port),
+			Handler:           router,
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			IdleTimeout:       120 * time.Second,
 		}
 
 		cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
