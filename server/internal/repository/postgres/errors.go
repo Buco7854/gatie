@@ -18,8 +18,13 @@ func mapError(err error) error {
 		return repository.ErrNotFound
 	}
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return repository.ErrConflict
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "23505":
+			return repository.ErrConflict
+		case "23503":
+			return repository.ErrForeignKeyViolation
+		}
 	}
 	return fmt.Errorf("database: %w", err)
 }

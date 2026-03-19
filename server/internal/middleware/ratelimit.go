@@ -104,7 +104,7 @@ func stripPort(addr string) string {
 func NewRateLimit(api huma.API, vk valkey.Client, tp *TrustedProxies, burst int, window time.Duration) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		ip := ExtractIP(ctx, tp)
-		key := fmt.Sprintf("ratelimit:%s", ip)
+		key := fmt.Sprintf("ratelimit:%s:%s", ctx.URL().Path, ip)
 
 		allowed, err := checkRateLimit(ctx.Context(), vk, key, burst, window)
 		if err != nil {

@@ -57,26 +57,33 @@ func (s *AuthService) NeedsSetup(ctx context.Context) (bool, error) {
 }
 
 func (s *AuthService) Setup(ctx context.Context, input SetupInput) (*AuthResult, error) {
-	count, err := s.repo.CountMembers(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("counting members: %w", err)
-	}
-	if count > 0 {
-		return nil, ErrSetupAlreadyCompleted
-	}
-
 	hash, err := auth.HashPassword(input.Password)
 	if err != nil {
 		return nil, err
 	}
 
-	row, err := s.repo.CreateMember(ctx, repository.CreateMemberParams{
-		Username:     input.Username,
-		PasswordHash: hash,
-		Role:         RoleAdmin,
+	var row repository.Member
+	err = s.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		count, err := s.repo.CountMembers(txCtx)
+		if err != nil {
+			return fmt.Errorf("counting members: %w", err)
+		}
+		if count > 0 {
+			return ErrSetupAlreadyCompleted
+		}
+
+		row, err = s.repo.CreateMember(txCtx, repository.CreateMemberParams{
+			Username:     input.Username,
+			PasswordHash: hash,
+			Role:         RoleAdmin,
+		})
+		if err != nil {
+			return fmt.Errorf("creating admin: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("creating admin: %w", err)
+		return nil, err
 	}
 
 	return s.generateTokens(ctx, row)

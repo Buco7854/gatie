@@ -154,6 +154,9 @@ func (s *RoleService) SetRolePermissions(ctx context.Context, roleID string, per
 
 		for _, pid := range permissionIDs {
 			if err := s.repo.AddRolePermission(txCtx, roleID, pid); err != nil {
+				if errors.Is(err, repository.ErrForeignKeyViolation) {
+					return fmt.Errorf("%w: role %q or permission %q does not exist", ErrRoleNotFound, roleID, pid)
+				}
 				return fmt.Errorf("adding permission %s: %w", pid, err)
 			}
 		}

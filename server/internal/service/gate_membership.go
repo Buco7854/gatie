@@ -53,7 +53,7 @@ type UpdateGateMembershipInput struct {
 
 func (s *GateMembershipService) ListGateMembers(ctx context.Context, gateID string) ([]GateMember, error) {
 	if _, err := s.repo.GetGateByID(ctx, gateID); err != nil {
-		return nil, mapGateMembershipError(err, "getting gate")
+		return nil, mapGateError(err, "getting gate")
 	}
 
 	rows, err := s.repo.ListGateMemberships(ctx, gateID)
@@ -81,7 +81,7 @@ func (s *GateMembershipService) ListGateMembers(ctx context.Context, gateID stri
 
 func (s *GateMembershipService) AddGateMember(ctx context.Context, input CreateGateMembershipInput) (*GateMember, error) {
 	if _, err := s.repo.GetGateByID(ctx, input.GateID); err != nil {
-		return nil, mapGateMembershipError(err, "getting gate")
+		return nil, mapGateError(err, "getting gate")
 	}
 
 	member, err := s.repo.GetMemberByID(ctx, input.MemberID)
@@ -162,6 +162,17 @@ func mapGateMembershipError(err error, fallback string) error {
 		return ErrInvalidID
 	case errors.Is(err, repository.ErrNotFound):
 		return ErrGateMembershipNotFound
+	default:
+		return fmt.Errorf("%s: %w", fallback, err)
+	}
+}
+
+func mapGateError(err error, fallback string) error {
+	switch {
+	case errors.Is(err, repository.ErrInvalidID):
+		return ErrInvalidID
+	case errors.Is(err, repository.ErrNotFound):
+		return ErrGateNotFound
 	default:
 		return fmt.Errorf("%s: %w", fallback, err)
 	}
