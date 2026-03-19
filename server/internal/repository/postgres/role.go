@@ -6,6 +6,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gatie-io/gatie-server/internal/repository"
+	"github.com/gatie-io/gatie-server/internal/service"
 )
 
 type RoleRepository struct{ base }
@@ -14,7 +15,7 @@ func NewRoleRepository(pool *pgxpool.Pool) *RoleRepository {
 	return &RoleRepository{base{db: pool, pool: pool}}
 }
 
-func (r *RoleRepository) BeginTx(ctx context.Context) (repository.RoleRepository, error) {
+func (r *RoleRepository) BeginTx(ctx context.Context) (service.RoleRepository, error) {
 	b, err := r.beginTx(ctx)
 	if err != nil {
 		return nil, err

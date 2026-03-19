@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gatie-io/gatie-server/internal/repository"
+	"github.com/gatie-io/gatie-server/internal/service"
 )
 
 type AuthRepository struct{ base }
@@ -15,7 +16,7 @@ func NewAuthRepository(pool *pgxpool.Pool) *AuthRepository {
 	return &AuthRepository{base{db: pool, pool: pool}}
 }
 
-func (r *AuthRepository) BeginTx(ctx context.Context) (repository.AuthRepository, error) {
+func (r *AuthRepository) BeginTx(ctx context.Context) (service.AuthRepository, error) {
 	b, err := r.beginTx(ctx)
 	if err != nil {
 		return nil, err

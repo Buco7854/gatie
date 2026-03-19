@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gatie-io/gatie-server/internal/repository"
+	"github.com/gatie-io/gatie-server/internal/service"
 )
 
 type MemberRepository struct{ base }
@@ -17,7 +18,7 @@ func NewMemberRepository(pool *pgxpool.Pool) *MemberRepository {
 	return &MemberRepository{base{db: pool, pool: pool}}
 }
 
-func (r *MemberRepository) BeginTx(ctx context.Context) (repository.MemberRepository, error) {
+func (r *MemberRepository) BeginTx(ctx context.Context) (service.MemberRepository, error) {
 	b, err := r.beginTx(ctx)
 	if err != nil {
 		return nil, err

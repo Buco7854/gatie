@@ -8,6 +8,25 @@ import (
 	"github.com/gatie-io/gatie-server/internal/repository"
 )
 
+type RoleRepository interface {
+	BeginTx(ctx context.Context) (RoleRepository, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+	ListRoles(ctx context.Context) ([]repository.Role, error)
+	CreateRole(ctx context.Context, id, description string) (repository.Role, error)
+	UpdateRole(ctx context.Context, id, description string) (repository.Role, error)
+	DeleteRole(ctx context.Context, id string) error
+	RoleInUse(ctx context.Context, roleID string) (bool, error)
+	GetRolePermissions(ctx context.Context, roleID string) ([]string, error)
+	DeleteRolePermissions(ctx context.Context, roleID string) error
+	AddRolePermission(ctx context.Context, roleID, permissionID string) error
+	ListPermissions(ctx context.Context) ([]repository.Permission, error)
+	CreatePermission(ctx context.Context, id, description string) (repository.Permission, error)
+	UpdatePermission(ctx context.Context, id, description string) (repository.Permission, error)
+	DeletePermission(ctx context.Context, id string) error
+	PermissionInUse(ctx context.Context, permissionID string) (bool, error)
+}
+
 var (
 	ErrRoleProtected       = errors.New("this role is protected and cannot be modified")
 	ErrPermissionProtected = errors.New("this permission is protected and cannot be modified")
@@ -20,10 +39,10 @@ var (
 )
 
 type RoleService struct {
-	repo repository.RoleRepository
+	repo RoleRepository
 }
 
-func NewRoleService(repo repository.RoleRepository) *RoleService {
+func NewRoleService(repo RoleRepository) *RoleService {
 	return &RoleService{repo: repo}
 }
 

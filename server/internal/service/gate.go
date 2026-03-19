@@ -11,6 +11,19 @@ import (
 	"github.com/gatie-io/gatie-server/internal/repository"
 )
 
+type GateRepository interface {
+	BeginTx(ctx context.Context) (GateRepository, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+	CountGates(ctx context.Context) (int64, error)
+	ListGates(ctx context.Context, arg repository.ListParams) ([]repository.Gate, error)
+	GetGateByID(ctx context.Context, id string) (repository.Gate, error)
+	CreateGate(ctx context.Context, arg repository.CreateGateParams) (repository.Gate, error)
+	PatchGate(ctx context.Context, arg repository.PatchGateParams) (repository.Gate, error)
+	DeleteGate(ctx context.Context, id string) error
+	UpdateGateToken(ctx context.Context, arg repository.UpdateGateTokenParams) (repository.Gate, error)
+}
+
 var (
 	ErrGateNotFound  = errors.New("gate not found")
 	ErrGateNameExists = errors.New("a gate with this name already exists")
@@ -18,10 +31,10 @@ var (
 )
 
 type GateService struct {
-	repo repository.GateRepository
+	repo GateRepository
 }
 
-func NewGateService(repo repository.GateRepository) *GateService {
+func NewGateService(repo GateRepository) *GateService {
 	return &GateService{repo: repo}
 }
 

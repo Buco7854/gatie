@@ -9,11 +9,16 @@ import (
 	"github.com/gatie-io/gatie-server/internal/repository"
 )
 
-type AuthorizationService struct {
-	repo repository.AuthorizationRepository
+type AuthorizationRepository interface {
+	GetRolePermissions(ctx context.Context, roleID string) ([]string, error)
+	GetGateMembership(ctx context.Context, gateID, memberID string) (repository.GateMembership, error)
 }
 
-func NewAuthorizationService(repo repository.AuthorizationRepository) *AuthorizationService {
+type AuthorizationService struct {
+	repo AuthorizationRepository
+}
+
+func NewAuthorizationService(repo AuthorizationRepository) *AuthorizationService {
 	return &AuthorizationService{repo: repo}
 }
 
