@@ -10,21 +10,8 @@ import (
 	"github.com/gatie-io/gatie-server/internal/repository"
 )
 
-type AuthRepository interface {
-	BeginTx(ctx context.Context) (AuthRepository, error)
-	Commit(ctx context.Context) error
-	Rollback(ctx context.Context) error
-	CountMembers(ctx context.Context) (int64, error)
-	CreateMember(ctx context.Context, arg repository.CreateMemberParams) (repository.Member, error)
-	GetMemberByUsername(ctx context.Context, username string) (repository.Member, error)
-	GetMemberByID(ctx context.Context, id string) (repository.Member, error)
-	GetRefreshTokenByHash(ctx context.Context, tokenHash string) (repository.RefreshToken, error)
-	DeleteRefreshToken(ctx context.Context, id string) error
-	CreateRefreshToken(ctx context.Context, arg repository.CreateRefreshTokenParams) (repository.RefreshToken, error)
-}
-
 type AuthService struct {
-	repo AuthRepository
+	repo repository.AuthRepository
 	jwt  *auth.JWTManager
 }
 
@@ -35,7 +22,7 @@ var (
 	ErrRefreshTokenExpired   = errors.New("refresh token expired")
 )
 
-func NewAuthService(repo AuthRepository, jwt *auth.JWTManager) *AuthService {
+func NewAuthService(repo repository.AuthRepository, jwt *auth.JWTManager) *AuthService {
 	return &AuthService{repo: repo, jwt: jwt}
 }
 

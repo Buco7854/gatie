@@ -9,19 +9,6 @@ import (
 	"github.com/gatie-io/gatie-server/internal/repository"
 )
 
-type MemberRepository interface {
-	BeginTx(ctx context.Context) (MemberRepository, error)
-	Commit(ctx context.Context) error
-	Rollback(ctx context.Context) error
-	CountMembers(ctx context.Context) (int64, error)
-	ListMembers(ctx context.Context, arg repository.ListParams) ([]repository.Member, error)
-	GetMemberByID(ctx context.Context, id string) (repository.Member, error)
-	CreateMember(ctx context.Context, arg repository.CreateMemberParams) (repository.Member, error)
-	PatchMember(ctx context.Context, arg repository.PatchMemberParams) (repository.Member, error)
-	DeleteMember(ctx context.Context, id string) error
-	CountMembersByRoleForUpdate(ctx context.Context, role string) (int64, error)
-}
-
 var (
 	ErrMemberNotFound = errors.New("member not found")
 	ErrSelfDelete     = errors.New("cannot delete your own account")
@@ -31,10 +18,10 @@ var (
 )
 
 type MemberService struct {
-	repo MemberRepository
+	repo repository.MemberRepository
 }
 
-func NewMemberService(repo MemberRepository) *MemberService {
+func NewMemberService(repo repository.MemberRepository) *MemberService {
 	return &MemberService{repo: repo}
 }
 

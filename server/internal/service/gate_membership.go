@@ -9,26 +9,16 @@ import (
 	"github.com/gatie-io/gatie-server/internal/repository"
 )
 
-type GateMembershipRepository interface {
-	ListGateMemberships(ctx context.Context, gateID string) ([]repository.GateMembershipWithMember, error)
-	GetGateMembership(ctx context.Context, gateID, memberID string) (repository.GateMembership, error)
-	CreateGateMembership(ctx context.Context, arg repository.CreateGateMembershipParams) (repository.GateMembership, error)
-	UpdateGateMembership(ctx context.Context, arg repository.UpdateGateMembershipParams) (repository.GateMembership, error)
-	DeleteGateMembership(ctx context.Context, gateID, memberID string) error
-	GetGateByID(ctx context.Context, id string) (repository.Gate, error)
-	GetMemberByID(ctx context.Context, id string) (repository.Member, error)
-}
-
 var (
 	ErrGateMembershipNotFound = errors.New("gate membership not found")
 	ErrGateMembershipExists   = errors.New("member already has access to this gate")
 )
 
 type GateMembershipService struct {
-	repo GateMembershipRepository
+	repo repository.GateMembershipRepository
 }
 
-func NewGateMembershipService(repo GateMembershipRepository) *GateMembershipService {
+func NewGateMembershipService(repo repository.GateMembershipRepository) *GateMembershipService {
 	return &GateMembershipService{repo: repo}
 }
 

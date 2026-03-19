@@ -9,7 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gatie-io/gatie-server/internal/repository"
-	"github.com/gatie-io/gatie-server/internal/service"
 )
 
 type GateRepository struct{ base }
@@ -18,7 +17,7 @@ func NewGateRepository(pool *pgxpool.Pool) *GateRepository {
 	return &GateRepository{base{db: pool, pool: pool}}
 }
 
-func (r *GateRepository) BeginTx(ctx context.Context) (service.GateRepository, error) {
+func (r *GateRepository) BeginTx(ctx context.Context) (repository.GateRepository, error) {
 	b, err := r.beginTx(ctx)
 	if err != nil {
 		return nil, err
