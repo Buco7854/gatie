@@ -9,9 +9,6 @@ import (
 )
 
 type RoleRepository interface {
-	BeginTx(ctx context.Context) (RoleRepository, error)
-	Commit(ctx context.Context) error
-	Rollback(ctx context.Context) error
 	ListRoles(ctx context.Context) ([]repository.Role, error)
 	CreateRole(ctx context.Context, id, description string) (repository.Role, error)
 	UpdateRole(ctx context.Context, id, description string) (repository.Role, error)
@@ -40,10 +37,11 @@ var (
 
 type RoleService struct {
 	repo RoleRepository
+	tx   repository.Transactor
 }
 
-func NewRoleService(repo RoleRepository) *RoleService {
-	return &RoleService{repo: repo}
+func NewRoleService(repo RoleRepository, tx repository.Transactor) *RoleService {
+	return &RoleService{repo: repo, tx: tx}
 }
 
 type Role struct {
@@ -118,28 +116,24 @@ func (s *RoleService) DeleteRole(ctx context.Context, id string) error {
 		return ErrRoleProtected
 	}
 
-	tx, err := s.repo.BeginTx(ctx)
-	if err != nil {
-		return fmt.Errorf("beginning transaction: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	inUse, err := tx.RoleInUse(ctx, id)
-	if err != nil {
-		return fmt.Errorf("checking role usage: %w", err)
-	}
-	if inUse {
-		return ErrRoleInUse
-	}
-
-	if err := tx.DeleteRole(ctx, id); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ErrRoleNotFound
+	return s.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		inUse, err := s.repo.RoleInUse(txCtx, id)
+		if err != nil {
+			return fmt.Errorf("checking role usage: %w", err)
 		}
-		return fmt.Errorf("deleting role: %w", err)
-	}
+		if inUse {
+			return ErrRoleInUse
+		}
 
-	return tx.Commit(ctx)
+		if err := s.repo.DeleteRole(txCtx, id); err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrRoleNotFound
+			}
+			return fmt.Errorf("deleting role: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func (s *RoleService) SetRolePermissions(ctx context.Context, roleID string, permissionIDs []string) (*Role, error) {
@@ -153,24 +147,21 @@ func (s *RoleService) SetRolePermissions(ctx context.Context, roleID string, per
 		}
 	}
 
-	tx, err := s.repo.BeginTx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("beginning transaction: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	if err := tx.DeleteRolePermissions(ctx, roleID); err != nil {
-		return nil, fmt.Errorf("clearing role permissions: %w", err)
-	}
-
-	for _, pid := range permissionIDs {
-		if err := tx.AddRolePermission(ctx, roleID, pid); err != nil {
-			return nil, fmt.Errorf("adding permission %s: %w", pid, err)
+	err := s.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.repo.DeleteRolePermissions(txCtx, roleID); err != nil {
+			return fmt.Errorf("clearing role permissions: %w", err)
 		}
-	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("committing transaction: %w", err)
+		for _, pid := range permissionIDs {
+			if err := s.repo.AddRolePermission(txCtx, roleID, pid); err != nil {
+				return fmt.Errorf("adding permission %s: %w", pid, err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	roles, err := s.repo.ListRoles(ctx)
@@ -237,26 +228,22 @@ func (s *RoleService) DeletePermission(ctx context.Context, id string) error {
 		return ErrPermissionProtected
 	}
 
-	tx, err := s.repo.BeginTx(ctx)
-	if err != nil {
-		return fmt.Errorf("beginning transaction: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	inUse, err := tx.PermissionInUse(ctx, id)
-	if err != nil {
-		return fmt.Errorf("checking permission usage: %w", err)
-	}
-	if inUse {
-		return ErrPermissionInUse
-	}
-
-	if err := tx.DeletePermission(ctx, id); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ErrPermissionNotFound
+	return s.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		inUse, err := s.repo.PermissionInUse(txCtx, id)
+		if err != nil {
+			return fmt.Errorf("checking permission usage: %w", err)
 		}
-		return fmt.Errorf("deleting permission: %w", err)
-	}
+		if inUse {
+			return ErrPermissionInUse
+		}
 
-	return tx.Commit(ctx)
+		if err := s.repo.DeletePermission(txCtx, id); err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrPermissionNotFound
+			}
+			return fmt.Errorf("deleting permission: %w", err)
+		}
+
+		return nil
+	})
 }

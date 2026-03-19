@@ -6,27 +6,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gatie-io/gatie-server/internal/repository"
-	"github.com/gatie-io/gatie-server/internal/service"
 )
 
 type RoleRepository struct{ base }
 
 func NewRoleRepository(pool *pgxpool.Pool) *RoleRepository {
-	return &RoleRepository{base{db: pool, pool: pool}}
-}
-
-func (r *RoleRepository) BeginTx(ctx context.Context) (service.RoleRepository, error) {
-	b, err := r.beginTx(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &RoleRepository{b}, nil
+	return &RoleRepository{base{pool: pool}}
 }
 
 // --- Roles ---
 
 func (r *RoleRepository) ListRoles(ctx context.Context) ([]repository.Role, error) {
-	rows, err := r.db.Query(ctx,
+	rows, err := r.conn(ctx).Query(ctx,
 		`SELECT r.id, r.description, COALESCE(array_agg(rp.permission_id ORDER BY rp.permission_id) FILTER (WHERE rp.permission_id IS NOT NULL), '{}')
 		FROM roles r
 		LEFT JOIN role_permissions rp ON rp.role_id = r.id
@@ -50,11 +41,11 @@ func (r *RoleRepository) ListRoles(ctx context.Context) ([]repository.Role, erro
 }
 
 func (r *RoleRepository) GetRolePermissions(ctx context.Context, roleID string) ([]string, error) {
-	return queryRolePermissions(ctx, r.db, roleID)
+	return queryRolePermissions(ctx, r.conn(ctx), roleID)
 }
 
 func (r *RoleRepository) CreateRole(ctx context.Context, id, description string) (repository.Role, error) {
-	row := r.db.QueryRow(ctx,
+	row := r.conn(ctx).QueryRow(ctx,
 		`INSERT INTO roles (id, description) VALUES ($1, $2) RETURNING id, description`,
 		id, description,
 	)
@@ -67,7 +58,7 @@ func (r *RoleRepository) CreateRole(ctx context.Context, id, description string)
 }
 
 func (r *RoleRepository) UpdateRole(ctx context.Context, id, description string) (repository.Role, error) {
-	row := r.db.QueryRow(ctx,
+	row := r.conn(ctx).QueryRow(ctx,
 		`UPDATE roles SET description = $2 WHERE id = $1 RETURNING id, description`,
 		id, description,
 	)
@@ -79,13 +70,13 @@ func (r *RoleRepository) UpdateRole(ctx context.Context, id, description string)
 }
 
 func (r *RoleRepository) DeleteRole(ctx context.Context, id string) error {
-	row := r.db.QueryRow(ctx, `DELETE FROM roles WHERE id = $1 RETURNING id`, id)
+	row := r.conn(ctx).QueryRow(ctx, `DELETE FROM roles WHERE id = $1 RETURNING id`, id)
 	var deleted string
 	return mapError(row.Scan(&deleted))
 }
 
 func (r *RoleRepository) RoleInUse(ctx context.Context, roleID string) (bool, error) {
-	row := r.db.QueryRow(ctx,
+	row := r.conn(ctx).QueryRow(ctx,
 		`SELECT EXISTS(
 			SELECT 1 FROM members WHERE role_id = $1
 			UNION ALL
@@ -100,12 +91,12 @@ func (r *RoleRepository) RoleInUse(ctx context.Context, roleID string) (bool, er
 }
 
 func (r *RoleRepository) DeleteRolePermissions(ctx context.Context, roleID string) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM role_permissions WHERE role_id = $1`, roleID)
+	_, err := r.conn(ctx).Exec(ctx, `DELETE FROM role_permissions WHERE role_id = $1`, roleID)
 	return mapError(err)
 }
 
 func (r *RoleRepository) AddRolePermission(ctx context.Context, roleID, permissionID string) error {
-	_, err := r.db.Exec(ctx,
+	_, err := r.conn(ctx).Exec(ctx,
 		`INSERT INTO role_permissions (role_id, permission_id) VALUES ($1, $2)`,
 		roleID, permissionID,
 	)
@@ -115,7 +106,7 @@ func (r *RoleRepository) AddRolePermission(ctx context.Context, roleID, permissi
 // --- Permissions ---
 
 func (r *RoleRepository) ListPermissions(ctx context.Context) ([]repository.Permission, error) {
-	rows, err := r.db.Query(ctx, `SELECT id, description FROM permissions ORDER BY id`)
+	rows, err := r.conn(ctx).Query(ctx, `SELECT id, description FROM permissions ORDER BY id`)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -133,7 +124,7 @@ func (r *RoleRepository) ListPermissions(ctx context.Context) ([]repository.Perm
 }
 
 func (r *RoleRepository) CreatePermission(ctx context.Context, id, description string) (repository.Permission, error) {
-	row := r.db.QueryRow(ctx,
+	row := r.conn(ctx).QueryRow(ctx,
 		`INSERT INTO permissions (id, description) VALUES ($1, $2) RETURNING id, description`,
 		id, description,
 	)
@@ -145,7 +136,7 @@ func (r *RoleRepository) CreatePermission(ctx context.Context, id, description s
 }
 
 func (r *RoleRepository) UpdatePermission(ctx context.Context, id, description string) (repository.Permission, error) {
-	row := r.db.QueryRow(ctx,
+	row := r.conn(ctx).QueryRow(ctx,
 		`UPDATE permissions SET description = $2 WHERE id = $1 RETURNING id, description`,
 		id, description,
 	)
@@ -157,13 +148,13 @@ func (r *RoleRepository) UpdatePermission(ctx context.Context, id, description s
 }
 
 func (r *RoleRepository) DeletePermission(ctx context.Context, id string) error {
-	row := r.db.QueryRow(ctx, `DELETE FROM permissions WHERE id = $1 RETURNING id`, id)
+	row := r.conn(ctx).QueryRow(ctx, `DELETE FROM permissions WHERE id = $1 RETURNING id`, id)
 	var deleted string
 	return mapError(row.Scan(&deleted))
 }
 
 func (r *RoleRepository) PermissionInUse(ctx context.Context, permissionID string) (bool, error) {
-	row := r.db.QueryRow(ctx,
+	row := r.conn(ctx).QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM role_permissions WHERE permission_id = $1)`,
 		permissionID,
 	)

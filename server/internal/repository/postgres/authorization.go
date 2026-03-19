@@ -11,13 +11,13 @@ import (
 type AuthorizationRepository struct{ base }
 
 func NewAuthorizationRepository(pool *pgxpool.Pool) *AuthorizationRepository {
-	return &AuthorizationRepository{base{db: pool, pool: pool}}
+	return &AuthorizationRepository{base{pool: pool}}
 }
 
 func (r *AuthorizationRepository) GetRolePermissions(ctx context.Context, roleID string) ([]string, error) {
-	return queryRolePermissions(ctx, r.db, roleID)
+	return queryRolePermissions(ctx, r.conn(ctx), roleID)
 }
 
 func (r *AuthorizationRepository) GetGateMembership(ctx context.Context, gateID, memberID string) (repository.GateMembership, error) {
-	return queryGateMembership(ctx, r.db, gateID, memberID)
+	return queryGateMembership(ctx, r.conn(ctx), gateID, memberID)
 }

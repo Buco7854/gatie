@@ -11,9 +11,6 @@ import (
 )
 
 type AuthRepository interface {
-	BeginTx(ctx context.Context) (AuthRepository, error)
-	Commit(ctx context.Context) error
-	Rollback(ctx context.Context) error
 	CountMembers(ctx context.Context) (int64, error)
 	CreateMember(ctx context.Context, arg repository.CreateMemberParams) (repository.Member, error)
 	GetMemberByUsername(ctx context.Context, username string) (repository.Member, error)
@@ -25,6 +22,7 @@ type AuthRepository interface {
 
 type AuthService struct {
 	repo AuthRepository
+	tx   repository.Transactor
 	jwt  *auth.JWTManager
 }
 
@@ -35,8 +33,8 @@ var (
 	ErrRefreshTokenExpired   = errors.New("refresh token expired")
 )
 
-func NewAuthService(repo AuthRepository, jwt *auth.JWTManager) *AuthService {
-	return &AuthService{repo: repo, jwt: jwt}
+func NewAuthService(repo AuthRepository, tx repository.Transactor, jwt *auth.JWTManager) *AuthService {
+	return &AuthService{repo: repo, tx: tx, jwt: jwt}
 }
 
 type SetupInput struct {
@@ -105,63 +103,60 @@ func (s *AuthService) Login(ctx context.Context, input LoginInput) (*AuthResult,
 func (s *AuthService) Refresh(ctx context.Context, rawToken string) (*AuthResult, error) {
 	tokenHash := auth.HashToken(rawToken)
 
-	tx, err := s.repo.BeginTx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("beginning transaction: %w", err)
-	}
-	defer tx.Rollback(ctx)
+	var result *AuthResult
+	err := s.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		rt, err := s.repo.GetRefreshTokenByHash(txCtx, tokenHash)
+		if err != nil {
+			return ErrInvalidRefreshToken
+		}
 
-	rt, err := tx.GetRefreshTokenByHash(ctx, tokenHash)
-	if err != nil {
-		return nil, ErrInvalidRefreshToken
-	}
+		if err := s.repo.DeleteRefreshToken(txCtx, rt.ID); err != nil {
+			return fmt.Errorf("revoking old token: %w", err)
+		}
 
-	if err := tx.DeleteRefreshToken(ctx, rt.ID); err != nil {
-		return nil, fmt.Errorf("revoking old token: %w", err)
-	}
+		if rt.ExpiresAt.Before(time.Now()) {
+			return ErrRefreshTokenExpired
+		}
 
-	if rt.ExpiresAt.Before(time.Now()) {
-		tx.Commit(ctx)
-		return nil, ErrRefreshTokenExpired
-	}
+		row, err := s.repo.GetMemberByID(txCtx, rt.MemberID)
+		if err != nil {
+			return fmt.Errorf("getting member for refresh: %w", err)
+		}
 
-	row, err := tx.GetMemberByID(ctx, rt.MemberID)
-	if err != nil {
-		return nil, fmt.Errorf("getting member for refresh: %w", err)
-	}
+		member := toMember(row)
+		accessToken, err := s.jwt.GenerateAccessToken(member.ID, member.Role, member.Username)
+		if err != nil {
+			return fmt.Errorf("generating access token: %w", err)
+		}
 
-	member := toMember(row)
-	accessToken, err := s.jwt.GenerateAccessToken(member.ID, member.Role, member.Username)
-	if err != nil {
-		return nil, fmt.Errorf("generating access token: %w", err)
-	}
+		rawRefresh, err := auth.GenerateRefreshToken()
+		if err != nil {
+			return err
+		}
 
-	rawRefresh, err := auth.GenerateRefreshToken()
+		refreshHash := auth.HashToken(rawRefresh)
+		expiresAt := time.Now().Add(s.jwt.RefreshDuration())
+
+		_, err = s.repo.CreateRefreshToken(txCtx, repository.CreateRefreshTokenParams{
+			MemberID:  rt.MemberID,
+			TokenHash: refreshHash,
+			ExpiresAt: expiresAt,
+		})
+		if err != nil {
+			return fmt.Errorf("storing refresh token: %w", err)
+		}
+
+		result = &AuthResult{
+			AccessToken:  accessToken,
+			RefreshToken: rawRefresh,
+			Member:       member,
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	refreshHash := auth.HashToken(rawRefresh)
-	expiresAt := time.Now().Add(s.jwt.RefreshDuration())
-
-	_, err = tx.CreateRefreshToken(ctx, repository.CreateRefreshTokenParams{
-		MemberID:  rt.MemberID,
-		TokenHash: refreshHash,
-		ExpiresAt: expiresAt,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("storing refresh token: %w", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("committing transaction: %w", err)
-	}
-
-	return &AuthResult{
-		AccessToken:  accessToken,
-		RefreshToken: rawRefresh,
-		Member:       member,
-	}, nil
+	return result, nil
 }
 
 func (s *AuthService) Logout(ctx context.Context, rawToken string) error {

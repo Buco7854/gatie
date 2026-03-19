@@ -54,6 +54,7 @@ func main() {
 			os.Exit(1)
 		}
 
+		transactor := postgres.NewTransactor(dbpool)
 		authRepo := postgres.NewAuthRepository(dbpool)
 		memberRepo := postgres.NewMemberRepository(dbpool)
 		gateRepo := postgres.NewGateRepository(dbpool)
@@ -93,16 +94,16 @@ func main() {
 		adminMW := middleware.NewRequireAdmin(api)
 		authRateLimitMW := middleware.NewRateLimit(api, vkClient, trustedProxies, 5, 10*time.Second)
 
-		authService := service.NewAuthService(authRepo, jwtManager)
+		authService := service.NewAuthService(authRepo, transactor, jwtManager)
 		authHandler := handler.NewAuthHandler(authService, authRateLimitMW)
 
-		memberService := service.NewMemberService(memberRepo)
+		memberService := service.NewMemberService(memberRepo, transactor)
 		memberHandler := handler.NewMemberHandler(memberService, authMW, adminMW)
 
-		gateService := service.NewGateService(gateRepo)
+		gateService := service.NewGateService(gateRepo, transactor)
 		gateHandler := handler.NewGateHandler(gateService, authMW, adminMW)
 
-		roleService := service.NewRoleService(roleRepo)
+		roleService := service.NewRoleService(roleRepo, transactor)
 		roleHandler := handler.NewRoleHandler(roleService, authMW, adminMW)
 
 		gateMembershipService := service.NewGateMembershipService(gateMembershipRepo)
