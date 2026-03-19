@@ -93,6 +93,7 @@
     "tokenWarning": "This token will not be shown again. Copy it now and store it securely.",
     "tokenCopied": "Copied!",
     "tokenCopy": "Copy",
+    "tokenCopyFailed": "Copy failed. Please select and copy the token manually.",
     "tokenRegenerate": "Regenerate token",
     "tokenRegenerateConfirmTitle": "Regenerate token?",
     "tokenRegenerateConfirmBody": "The current token will be immediately invalidated. The gate device will need to be reconfigured with the new token.",

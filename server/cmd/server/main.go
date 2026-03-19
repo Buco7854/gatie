@@ -38,7 +38,9 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 
 	cli := humacli.New(func(hooks humacli.Hooks, opts *Options) {
-		dbpool, err := pgxpool.New(context.Background(), opts.DatabaseURL)
+		dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer dbCancel()
+		dbpool, err := pgxpool.New(dbCtx, opts.DatabaseURL)
 		if err != nil {
 			slog.Error("unable to connect to database", "error", err)
 			os.Exit(1)
@@ -57,7 +59,8 @@ func main() {
 		gateRepo := postgres.NewGateRepository(dbpool)
 		roleRepo := postgres.NewRoleRepository(dbpool)
 		gateMembershipRepo := postgres.NewGateMembershipRepository(dbpool)
-		_ = postgres.NewAuthorizationRepository(dbpool) // used later when authorization middleware is wired
+		authzRepo := postgres.NewAuthorizationRepository(dbpool)
+		_ = authzRepo // TODO: wire into authorization middleware
 
 		jwtSecret := opts.JWTSecret
 		if jwtSecret == "" {

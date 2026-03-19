@@ -2,30 +2,12 @@ package handler
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
-
-func TestFormatSeconds(t *testing.T) {
-	tests := []struct {
-		d    time.Duration
-		want string
-	}{
-		{0, "0"},
-		{1 * time.Second, "1"},
-		{60 * time.Second, "60"},
-		{7 * 24 * time.Hour, "604800"},
-	}
-
-	for _, tt := range tests {
-		got := formatSeconds(tt.d)
-		if got != tt.want {
-			t.Errorf("formatSeconds(%v) = %q, want %q", tt.d, got, tt.want)
-		}
-	}
-}
 
 func TestUUIDToString(t *testing.T) {
 	// UUID v4: 550e8400-e29b-41d4-a716-446655440000
@@ -54,8 +36,18 @@ func TestBuildRefreshCookie(t *testing.T) {
 		t.Fatal("cookie should not be empty")
 	}
 
-	expected := "refresh_token=test-token; HttpOnly; Secure; SameSite=Strict; Path=/api/auth; Max-Age=604800"
-	if cookie != expected {
-		t.Errorf("got:\n  %s\nwant:\n  %s", cookie, expected)
+	checks := []string{
+		"refresh_token=test-token",
+		"Path=/api/auth",
+		"HttpOnly",
+		"Secure",
+		"SameSite=Strict",
+		"Max-Age=604800",
+	}
+
+	for _, check := range checks {
+		if !strings.Contains(cookie, check) {
+			t.Errorf("cookie missing %q, got: %s", check, cookie)
+		}
 	}
 }

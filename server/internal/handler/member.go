@@ -59,7 +59,7 @@ type ListMembersInput struct {
 }
 
 type GetMemberInput struct {
-	MemberID string `path:"member-id" doc:"Member UUID"`
+	MemberID string `path:"member-id" format:"uuid" doc:"Member UUID"`
 }
 
 type CreateMemberBodyInput struct {
@@ -72,7 +72,7 @@ type CreateMemberBodyInput struct {
 }
 
 type UpdateMemberInput struct {
-	MemberID string `path:"member-id" doc:"Member UUID"`
+	MemberID string `path:"member-id" format:"uuid" doc:"Member UUID"`
 	Body     struct {
 		Username    *string                         `json:"username,omitempty" minLength:"3" maxLength:"100" doc:"Username"`
 		DisplayName model.OmittableNullable[string] `json:"display_name,omitempty" maxLength:"200" doc:"Display name"`
@@ -81,7 +81,7 @@ type UpdateMemberInput struct {
 }
 
 type DeleteMemberInput struct {
-	MemberID string `path:"member-id" doc:"Member UUID"`
+	MemberID string `path:"member-id" format:"uuid" doc:"Member UUID"`
 }
 
 // --- Outputs ---

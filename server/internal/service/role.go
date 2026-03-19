@@ -175,7 +175,7 @@ func (s *RoleService) SetRolePermissions(ctx context.Context, roleID string, per
 
 	roles, err := s.repo.ListRoles(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("re-fetching roles: %w", err)
+		return nil, fmt.Errorf("re-fetching role: %w", err)
 	}
 	for _, r := range roles {
 		if r.ID == roleID {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -180,7 +179,9 @@ type LogoutInput struct {
 
 func (h *AuthHandler) logout(ctx context.Context, input *LogoutInput) (*struct{}, error) {
 	if input.RefreshToken != "" {
-		h.authService.Logout(ctx, input.RefreshToken)
+		if err := h.authService.Logout(ctx, input.RefreshToken); err != nil {
+			return nil, huma.Error500InternalServerError("failed to revoke token", err)
+		}
 	}
 	return nil, nil
 }
@@ -203,11 +204,14 @@ func buildAuthOutput(result *service.AuthResult) *AuthTokenOutput {
 }
 
 func buildRefreshCookie(token string, maxAge time.Duration) string {
-	return "refresh_token=" + token +
-		"; HttpOnly; Secure; SameSite=Strict; Path=/api/auth" +
-		"; Max-Age=" + formatSeconds(maxAge)
-}
-
-func formatSeconds(d time.Duration) string {
-	return strconv.Itoa(int(d.Seconds()))
+	c := &http.Cookie{
+		Name:     "refresh_token",
+		Value:    token,
+		Path:     "/api/auth",
+		MaxAge:   int(maxAge.Seconds()),
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	}
+	return c.String()
 }

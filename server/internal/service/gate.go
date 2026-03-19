@@ -25,8 +25,9 @@ type GateRepository interface {
 }
 
 var (
-	ErrGateNotFound = errors.New("gate not found")
-	ErrInvalidTTL   = errors.New("status_ttl_seconds must be between 1 and 86400")
+	ErrGateNotFound  = errors.New("gate not found")
+	ErrGateNameExists = errors.New("a gate with this name already exists")
+	ErrInvalidTTL    = errors.New("status_ttl_seconds must be between 1 and 86400")
 )
 
 type GateService struct {
@@ -105,6 +106,9 @@ func (s *GateService) CreateGate(ctx context.Context, input CreateGateInput) (*G
 		StatusTtlSeconds: input.StatusTTLSeconds,
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrConflict) {
+			return nil, ErrGateNameExists
+		}
 		return nil, fmt.Errorf("creating gate: %w", err)
 	}
 

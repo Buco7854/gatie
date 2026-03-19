@@ -84,6 +84,7 @@ function ActionButtons({ member, isSelf, setModal, setMemberToDelete }: ActionBu
         onClick={() => setModal({ type: 'edit', member })}
         className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
         title={t('action.edit')}
+        aria-label={t('action.edit')}
       >
         <PencilSquareIcon className="size-4" aria-hidden="true" />
       </button>
@@ -92,6 +93,7 @@ function ActionButtons({ member, isSelf, setModal, setMemberToDelete }: ActionBu
           onClick={() => setMemberToDelete(member)}
           className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
           title={t('action.delete')}
+          aria-label={t('action.delete')}
         >
           <TrashIcon className="size-4" aria-hidden="true" />
         </button>

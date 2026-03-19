@@ -38,14 +38,17 @@ function TokenReveal({ token, onClose }: { token: string; onClose: () => void })
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
 
+  const [copyFailed, setCopyFailed] = useState(false)
+
   function copy() {
     navigator.clipboard.writeText(token).then(
       () => {
         setCopied(true)
+        setCopyFailed(false)
         setTimeout(() => setCopied(false), 2000)
       },
       () => {
-        // Clipboard API not available (e.g. non-HTTPS)
+        setCopyFailed(true)
       },
     )
   }
@@ -72,6 +75,10 @@ function TokenReveal({ token, onClose }: { token: string; onClose: () => void })
           )}
         </button>
       </div>
+
+      {copyFailed && (
+        <p className="text-xs text-red-600 dark:text-red-400">{t('gates.tokenCopyFailed')}</p>
+      )}
 
       <div className="flex justify-end">
         <Button onClick={onClose}>{t('action.confirm')}</Button>
@@ -396,6 +403,7 @@ function GateActions({
         onClick={() => setModal({ type: 'edit', gate })}
         className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
         title={t('action.edit')}
+        aria-label={t('action.edit')}
       >
         <PencilSquareIcon className="size-4" aria-hidden="true" />
       </button>
@@ -403,6 +411,7 @@ function GateActions({
         onClick={() => setModal({ type: 'regenerate-confirm', gate })}
         className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
         title={t('gates.tokenRegenerate')}
+        aria-label={t('gates.tokenRegenerate')}
       >
         <ArrowPathIcon className="size-4" aria-hidden="true" />
       </button>
@@ -410,6 +419,7 @@ function GateActions({
         onClick={() => setGateToDelete(gate)}
         className="cursor-pointer rounded-lg p-1.5 text-zinc-400 transition-all hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
         title={t('action.delete')}
+        aria-label={t('action.delete')}
       >
         <TrashIcon className="size-4" aria-hidden="true" />
       </button>

@@ -175,7 +175,10 @@ func (s *AuthService) Logout(ctx context.Context, rawToken string) error {
 		return fmt.Errorf("looking up refresh token: %w", err)
 	}
 
-	return s.repo.DeleteRefreshToken(ctx, rt.ID)
+	if err := s.repo.DeleteRefreshToken(ctx, rt.ID); err != nil {
+		return fmt.Errorf("deleting refresh token: %w", err)
+	}
+	return nil
 }
 
 func (s *AuthService) generateTokens(ctx context.Context, row repository.Member) (*AuthResult, error) {
